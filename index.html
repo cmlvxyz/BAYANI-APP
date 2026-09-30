@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b1728" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Bayani-App" />
+    <link rel="icon" type="image/png" href="http://localhost:4000/src/assets/images/logo%20(2).png" />
+    <script>
+      (function () {
+        var probe = new Image();
+        probe.onerror = function () {
+          var links = document.querySelectorAll('link[rel="icon"]');
+          for (var i = 0; i < links.length; i++) {
+            links[i].href = '/logo.svg';
+            links[i].type = 'image/svg+xml';
+          }
+        };
+        probe.src = 'http://localhost:4000/src/assets/images/logo%20(2).png';
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <title>Bayani App</title>
+    <meta name="description" content="Discreet wearable emergency alert app for women and children protection (VAWC) in the Philippines." />
+    <meta property="og:title" content="Bayani-App - Safety in Every Step" />
+    <meta property="og:description" content="Discreet wearable emergency alert app for women and children protection (VAWC) in the Philippines." />
+    <meta property="og:type" content="website" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
