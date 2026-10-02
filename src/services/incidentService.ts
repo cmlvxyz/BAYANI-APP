@@ -31,6 +31,40 @@ const EMPTY_LOCATION: Incident['location'] = {
 
 type IncidentServiceListener = () => void;
 
+/**
+ * Remembers, for the lifetime of THIS browser tab, which alert the citizen
+ * actually raised. A plain page reload keeps the tab alive, so the SOS screen
+ * survives a refresh; a brand-new tab/window (e.g. re-running the launcher)
+ * starts with this empty, so opening the app never resurrects an old alert the
+ * citizen did not raise in this run. That is the "activate only when pressed"
+ * rule applied to the citizen side.
+ */
+const ACTIVE_SOS_KEY = 'bayani_citizen_active_sos';
+
+function readActiveSosId(): string | null {
+  try {
+    return sessionStorage.getItem(ACTIVE_SOS_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeActiveSosId(id: string) {
+  try {
+    sessionStorage.setItem(ACTIVE_SOS_KEY, id);
+  } catch {
+    // storage unavailable — restore simply won't happen, never a phantom
+  }
+}
+
+function clearActiveSosId() {
+  try {
+    sessionStorage.removeItem(ACTIVE_SOS_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 class IncidentService {
   private activeIncident: Incident | null = INITIAL_INCIDENT;
   private incidents: Incident[] = [...INITIAL_PAST_INCIDENTS];
@@ -111,15 +145,18 @@ class IncidentService {
 
     this.incidents.sort((a, b) => (a.id < b.id ? 1 : -1));
 
-    // Re-attach a still-open alert after a page reload / app restart.
+    // Re-attach the alert the citizen actually raised, after a page reload.
     //
-    // The backend store is the source of truth: the Response Center already
-    // treats any incident that is still open as an ACTIVE EMERGENCY, so if we
-    // did NOT re-attach it here the citizen's phone would show "no emergency"
-    // while the RC is still dispatching a unit for it. A resolved/cancelled
-    // incident is never promoted, so a concluded alert can't resurrect itself.
+    // Guarded by the tab-scoped id recorded when SOS was pressed: a refresh of
+    // the same tab keeps the emergency on screen, while opening the app fresh
+    // (new tab / relaunched) has no recorded id and therefore stays quiet. An
+    // incident that is now RESOLVED/CANCELLED is never promoted, so a concluded
+    // alert can't resurrect itself.
     if (!this.activeIncident) {
-      const open = this.incidents.find((i) => i.status !== 'RESOLVED' && i.status !== 'CANCELLED');
+      const raisedId = readActiveSosId();
+      const open = raisedId
+        ? this.incidents.find((i) => i.id === raisedId && i.status !== 'RESOLVED' && i.status !== 'CANCELLED')
+        : undefined;
       if (open) {
         this.activeIncident = {
           ...open,
@@ -138,6 +175,9 @@ class IncidentService {
           },
           ...this.notifications,
         ];
+      } else if (raisedId) {
+        // The alert we were showing is gone or already closed on the backend.
+        clearActiveSosId();
       }
     }
 
@@ -224,6 +264,9 @@ class IncidentService {
 
     this.activeIncident = newIncident;
     this.incidents = [newIncident, ...this.incidents.filter(i => i.id !== newIncident.id)];
+    // Record that THIS tab raised the alert, so a refresh keeps it on screen
+    // while a fresh tab does not.
+    writeActiveSosId(newIncident.id);
 
     const newNotifications: AppNotification[] = [
       { id: `notif-${Date.now()}-1`, type: 'sos', title: 'SOS Activated', message: 'Emergency signal raised from your device.', timestamp: currentTime, isRead: false, isEmergency: true },
@@ -390,6 +433,7 @@ class IncidentService {
       this.setTimelineStep(id, 't7', { status: 'completed', description: 'Response concluded' });
       this.activeIncident = { ...this.activeIncident, status: 'RESOLVED' };
       this.incidents = this.incidents.map(i => i.id === id ? { ...i, status: 'RESOLVED' } : i);
+      clearActiveSosId();
     }
     hardwareService.resetHardware();
     this.notify();
@@ -412,6 +456,7 @@ class IncidentService {
       if (status === 'RESOLVED' || status === 'CANCELLED') {
         hardwareService.resetHardware();
         this.activeIncident = { ...this.activeIncident, status };
+        clearActiveSosId();
       }
     }
 

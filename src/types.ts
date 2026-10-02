@@ -61,6 +61,8 @@ export interface Incident {
   userProfile?: CitizenAccountProfile;
   timeActivated: string;
   date: string;
+  /** ISO-8601 time the backend received this alert. Set by the server, never by the client. */
+  receivedAt?: string;
   status: IncidentStatus;
   location: {
     address: string;

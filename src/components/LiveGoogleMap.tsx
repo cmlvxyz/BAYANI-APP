@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 
 interface LiveGoogleMapProps {
   lat: number;
@@ -74,34 +75,64 @@ const EmbedMap: React.FC<LiveGoogleMapProps> = ({
   className,
 }) => {
   const frameCls = `w-full h-full border-0 ${className || ''}`;
+  // The embed iframe reports no progress, so hold a skeleton until it fires
+  // `load` (with a timeout so the panel can never get stuck behind it).
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    setLoaded(false);
+    const t = window.setTimeout(() => setLoaded(true), 6000);
+    return () => window.clearTimeout(t);
+  }, [lat, lng, pano, streetView]);
+
+  const overlay = !loaded && (
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--surface-sunken)]">
+      <div className="flex flex-col items-center gap-2.5">
+        <Loader2 size={20} strokeWidth={2} className="animate-spin text-brand-600" />
+        <p className="t-caption text-muted">{streetView ? 'Loading Street View…' : 'Loading map…'}</p>
+      </div>
+    </div>
+  );
 
   if (streetView) {
     const src = pano
       ? `https://www.google.com/maps?pano=${encodeURIComponent(pano)}&cbp=11,${heading ?? 0},${pitch ?? 0},0,0&output=svembed&hl=en`
       : `https://www.google.com/maps?cbll=${lat},${lng}&cbp=11,0,0,0,0&output=svembed&hl=en`;
+    // Hoisted out of the JSX: a nested template literal inside `key={...}` is
+    // hard for the TS/JSX parser to track when other expressions wrap the element.
+    const frameKey = pano ? `sv-pano-${pano}` : `sv-${lat},${lng}`;
     return (
+      <div className={`relative h-full w-full ${className || ''}`}>
+        <iframe
+          key={frameKey}
+          title="Google Street View"
+          src={src}
+          className={frameCls}
+          loading="lazy"
+          allowFullScreen
+          referrerPolicy="no-referrer-when-downgrade"
+          onLoad={() => setLoaded(true)}
+        />
+        {overlay}
+      </div>
+    );
+  }
+
+  const frameKey = `map-${lat},${lng}`;
+  return (
+    <div className={`relative h-full w-full ${className || ''}`}>
       <iframe
-        key={`sv-${pano || `${lat},${lng}`}`}
-        title="Google Street View"
-        src={src}
+        key={frameKey}
+        title="Google Maps"
+        src={`https://maps.google.com/maps?q=${lat},${lng}&z=${zoom}&hl=en&ie=UTF8&iwloc=B&output=embed`}
         className={frameCls}
         loading="lazy"
         allowFullScreen
         referrerPolicy="no-referrer-when-downgrade"
+        onLoad={() => setLoaded(true)}
       />
-    );
-  }
-
-  return (
-    <iframe
-      key={`${lat},${lng}`}
-      title="Google Maps"
-      src={`https://maps.google.com/maps?q=${lat},${lng}&z=${zoom}&hl=en&ie=UTF8&iwloc=B&output=embed`}
-      className={frameCls}
-      loading="lazy"
-      allowFullScreen
-      referrerPolicy="no-referrer-when-downgrade"
-    />
+      {overlay}
+    </div>
   );
 };
 
@@ -238,22 +269,29 @@ const GoogleJsMap: React.FC<LiveGoogleMapProps> = (props) => {
       <div ref={hostRef} className="absolute inset-0" />
 
       {mode === 'loading' && (
-        <div className="absolute inset-0 flex items-center justify-center bg-slate-100/80 text-xs font-bold text-slate-500">
-          Loading map…
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--surface-sunken)]">
+          <div className="flex flex-col items-center gap-2.5">
+            <Loader2 size={20} strokeWidth={2} className="animate-spin text-brand-600" />
+            <p className="t-caption text-muted">{streetView ? 'Loading Street View…' : 'Loading map…'}</p>
+          </div>
         </div>
       )}
 
       {/* Nearest-panorama notice (exact coverage not available) */}
       {mode === 'street' && coverage === 'nearest' && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 max-w-[90%] text-center bg-amber-500 text-white text-[10px] font-black uppercase tracking-wide px-3 py-1.5 rounded-lg shadow-lg pointer-events-none">
-          Street View unavailable at exact location. Showing nearest available panorama.
+        <div className="pointer-events-none absolute inset-x-3 bottom-3 z-10 mx-auto max-w-[90%]">
+          <p className="rounded-ctl bg-warn px-3 py-1.5 text-center text-[10px] font-extrabold uppercase tracking-[.06em] text-white shadow-lg">
+            Street View unavailable at exact location · showing nearest
+          </p>
         </div>
       )}
 
       {/* No-coverage notice (map fallback) */}
       {mode === 'map' && streetView && coverage === 'none' && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 max-w-[90%] text-center bg-slate-800/95 text-white text-[10px] font-black uppercase tracking-wide px-3 py-1.5 rounded-lg shadow-lg pointer-events-none">
-          Street View unavailable at this location. Showing map view.
+        <div className="pointer-events-none absolute inset-x-3 bottom-3 z-10 mx-auto max-w-[90%]">
+          <p className="rounded-ctl bg-[rgba(9,20,38,.92)] px-3 py-1.5 text-center text-[10px] font-extrabold uppercase tracking-[.06em] text-white shadow-lg">
+            No Street View here · showing map view
+          </p>
         </div>
       )}
     </div>

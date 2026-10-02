@@ -1,149 +1,180 @@
 import React, { useState } from 'react';
-import { FileText, Clock, MapPin, ChevronRight, ChevronDown, Check, AlertCircle, CheckCircle2, Shield, Filter } from 'lucide-react';
+import {
+  Clock,
+  MapPin,
+  ChevronRight,
+  ChevronDown,
+  Check,
+  Filter,
+  FileText,
+  History,
+} from 'lucide-react';
 import { Incident } from '../../types';
 import { IncidentDetailsModal } from './IncidentDetailsModal';
+import { Badge, GlassCard, EmptyState, type BadgeTone } from '../ui';
 
 interface UserIncidentsScreenProps {
   incidents: Incident[];
   onOpenAudioEvidence?: (incident: Incident) => void;
 }
 
+type FilterKey = 'ALL' | 'ACTIVE' | 'RESOLVED';
+
+const FILTER_OPTIONS: { key: FilterKey; label: string }[] = [
+  { key: 'ALL', label: 'All alerts' },
+  { key: 'ACTIVE', label: 'Active' },
+  { key: 'RESOLVED', label: 'Resolved' },
+];
+
+const statusTone = (status: string): BadgeTone => {
+  switch (status) {
+    case 'ACTIVE':
+    case 'PENDING':
+      return 'danger';
+    case 'RESPONDING':
+    case 'RESPONDER EN ROUTE':
+    case 'ON SCENE':
+    case 'WAIT FOR ME':
+    case 'ON THE WAY':
+      return 'warning';
+    case 'RESOLVED':
+      return 'success';
+    case 'CANCELLED':
+      return 'neutral';
+    default:
+      return 'brand';
+  }
+};
+
 export const UserIncidentsScreen: React.FC<UserIncidentsScreenProps> = ({
   incidents,
   onOpenAudioEvidence,
 }) => {
   const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
-  const [filter, setFilter] = useState<'ALL' | 'ACTIVE' | 'RESOLVED'>('ALL');
+  const [filter, setFilter] = useState<FilterKey>('ALL');
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
-
-  const filterOptions = [
-    { key: 'ALL', label: 'All Incidents' },
-    { key: 'ACTIVE', label: 'Active' },
-    { key: 'RESOLVED', label: 'Resolved' },
-  ] as const;
 
   const filteredIncidents = incidents.filter((inc) => {
     if (filter === 'ALL') return true;
-    if (filter === 'ACTIVE') return inc.status === 'ACTIVE' || inc.status === 'RESPONDING' || inc.status === 'RESPONDER EN ROUTE';
+    if (filter === 'ACTIVE')
+      return (
+        inc.status === 'ACTIVE' ||
+        inc.status === 'PENDING' ||
+        inc.status === 'RESPONDING' ||
+        inc.status === 'RESPONDER EN ROUTE'
+      );
     if (filter === 'RESOLVED') return inc.status === 'RESOLVED' || inc.status === 'CANCELLED';
     return true;
   });
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'ACTIVE':
-        return 'bg-red-50 text-red-700 border-red-200';
-      case 'RESPONDING':
-      case 'RESPONDER EN ROUTE':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'RESOLVED':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'CANCELLED':
-        return 'bg-slate-100 text-slate-700 border-slate-200';
-      default:
-        return 'bg-blue-50 text-blue-700 border-blue-200';
-    }
-  };
-
   return (
-    <div id="user-incidents-screen" className="min-h-[70vh] pb-8">
-      {/* Fixed panel — talagang hindi gumagalaw; cards lang ang nagso-scroll sa loob */}
-      <div className="fixed top-[100px] left-4 right-4 sm:left-6 sm:right-6 z-20 flex flex-col overflow-y-auto max-h-[calc(100vh-170px)] pb-4" onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 4)}>
-        {/* Header — katulad ng Live Maps: transparent dati, nagiging blur overlay pag nag-scroll */}
-        <div className={`sticky top-0 z-10 flex items-center justify-between transition-all duration-300 ${scrolled ? 'bg-white/20  0 backdrop-blur-xl rounded-2xl border-b border-slate-200/60 pb-1.5' : 'bg-transparent'}`}>
-          <div>
-          <h2 className="text-lg font-black relative left-5 text-slate-900 tracking-tight flex items-center gap-2">
-            <FileText className="w-7 h-7 text-blue-600" />
-            <span>INCIDENTS</span>
-          </h2>
-        </div>
+    <div id="user-incidents-screen" className="space-y-4 pb-6">
+      {/* Header + glass filter menu */}
+      <header className="flex items-center justify-between gap-3">
+        <h2 className="t-heading flex items-center gap-2 text-ink">
+          <FileText size={18} strokeWidth={1.9} className="text-brand-600" />
+          Alerts
+        </h2>
 
-        {/* Filter Menu */}
-        <div className="relative right-3">
+        <div className="relative">
           <button
+            type="button"
             onClick={() => setFilterMenuOpen((v) => !v)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-bold text-slate-700 hover:bg-white/50 transition-all active:scale-95"
+            aria-expanded={filterMenuOpen}
+            aria-haspopup="menu"
+            className="glass press flex min-h-[38px] items-center gap-1.5 rounded-field px-3 text-[12px] font-bold text-ink"
           >
-            <Filter className="w-3.5 h-3.5 text-blue-600" />
-            <span>
-              {filterOptions.find((o) => o.key === filter)?.label ?? 'All Incidents'}
-            </span>
-            <ChevronDown className={`w-3.5 h-3.5 text-slate-500 transition-transform ${filterMenuOpen ? 'rotate-180' : ''}`} />
+            <Filter size={14} strokeWidth={2} className="text-brand-600" />
+            <span>{FILTER_OPTIONS.find((o) => o.key === filter)?.label}</span>
+            <ChevronDown
+              size={14}
+              strokeWidth={2.2}
+              className={'text-muted transition-transform duration-[160ms] ' + (filterMenuOpen ? 'rotate-180' : '')}
+            />
           </button>
 
           {filterMenuOpen && (
             <>
-              {/* Click-away backdrop */}
               <div className="fixed inset-0 z-20" onClick={() => setFilterMenuOpen(false)} />
-              <div className="absolute right-0 mt-1.5 z-30 w-44 rounded-2xl bg-white border border-slate-200 shadow-lg p-1 text-[11px] font-bold overflow-hidden">
-                {filterOptions.map((opt) => (
+              <div
+                role="menu"
+                className="glass animate-pop-in absolute right-0 z-30 mt-1.5 w-44 overflow-hidden rounded-panel p-1.5"
+              >
+                {FILTER_OPTIONS.map((opt) => (
                   <button
                     key={opt.key}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={filter === opt.key}
                     onClick={() => {
                       setFilter(opt.key);
                       setFilterMenuOpen(false);
                     }}
-                    className={`w-full text-left px-3 py-2 rounded-xl flex items-center justify-between transition-all ${
-                      filter === opt.key ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
-                    }`}
+                    className={
+                      'press flex w-full items-center justify-between rounded-ctl px-3 py-2.5 text-left text-[12px] font-bold ' +
+                      'transition-colors duration-[160ms] ' +
+                      (filter === opt.key
+                        ? 'bg-brand-50 text-brand-700'
+                        : 'text-muted hover:bg-[var(--surface-sunken)]')
+                    }
                   >
                     {opt.label}
-                    {filter === opt.key && <Check className="w-3.5 h-3.5" />}
+                    {filter === opt.key && <Check size={15} strokeWidth={2.4} />}
                   </button>
                 ))}
               </div>
             </>
           )}
         </div>
-      </div>
+      </header>
 
-      {/* Incidents Card List */}
-      <div className="relative top-5 pt-1 space-y-2.5">
-        {filteredIncidents.length === 0 ? (
-          <div className="p-8 text-center bg-white rounded-3xl border border-slate-200 text-xs text-slate-400">
-            No incidents found in this category.
-          </div>
-        ) : (
-          filteredIncidents.map((incident) => (
-            <div
-              key={incident.id}
-              onClick={() => setSelectedIncident(incident)}
-              className="bg-white rounded-3xl p-4 border border-slate-200/80 hover:border-blue-300 transition-all shadow-xs cursor-pointer group active:scale-[0.99] space-y-2.5"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs font-black text-slate-900 group-hover:text-blue-600 transition-colors">
-                    {incident.incidentCode}
-                  </span>
-                  <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${getStatusBadge(incident.status)}`}>
-                    {incident.status}
-                  </span>
-                </div>
-                <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
-              </div>
+      {/* Incident cards */}
+      {filteredIncidents.length === 0 ? (
+        <EmptyState
+          icon={<History size={24} strokeWidth={1.7} />}
+          title="No alerts here"
+          description="Alerts you raise with SOS will be listed here with their status."
+        />
+      ) : (
+        <ul className="space-y-2.5">
+          {filteredIncidents.map((incident, i) => (
+            <li key={incident.id} style={{ ['--i' as string]: i } as React.CSSProperties}>
+              <GlassCard interactive>
+                <button
+                  type="button"
+                  onClick={() => setSelectedIncident(incident)}
+                  className="press w-full text-left"
+                  aria-label={`Open alert ${incident.incidentCode}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <span className="font-mono text-[13px] font-extrabold text-ink">
+                        {incident.incidentCode}
+                      </span>
+                      <Badge tone={statusTone(incident.status)}>{incident.status}</Badge>
+                    </div>
+                    <ChevronRight size={18} strokeWidth={1.9} className="mt-0.5 shrink-0 text-muted" />
+                  </div>
 
-              <div className="text-xs text-slate-600 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span className="truncate">{incident.location.address}, {incident.location.barangay}</span>
-              </div>
+                  <p className="mt-2.5 flex items-start gap-1.5">
+                    <MapPin size={15} strokeWidth={1.9} className="mt-0.5 shrink-0 text-muted" />
+                    <span className="t-body min-w-0 text-muted">
+                      {incident.location.address ||
+                        `${incident.location.barangay}, ${incident.location.city}`}
+                    </span>
+                  </p>
 
-              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-slate-400" />
-                  <span>{incident.date} • {incident.timeActivated}</span>
-                </span>
-                <span className="font-semibold text-blue-600 group-hover:underline">
-                  View Timeline →
-                </span>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-      </div>
+                  <p className="t-caption mt-3 flex items-center gap-1.5 border-t border-[rgba(15,31,58,.06)] pt-3 text-muted dark:border-white/[.08]">
+                    <Clock size={13} strokeWidth={1.9} />
+                    {incident.date} · {incident.timeActivated}
+                  </p>
+                </button>
+              </GlassCard>
+            </li>
+          ))}
+        </ul>
+      )}
 
-      {/* Details Modal */}
       <IncidentDetailsModal
         incident={selectedIncident}
         isOpen={Boolean(selectedIncident)}

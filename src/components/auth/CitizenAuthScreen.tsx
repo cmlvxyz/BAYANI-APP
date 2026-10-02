@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Lock, User, LogIn, UserPlus, Eye, EyeOff, Mail, Calendar } from 'lucide-react';
-import { SplashLogo } from './SplashScreen';
+import { Lock, User, LogIn, UserPlus, Eye, EyeOff, Mail, Calendar, AlertCircle, Loader2 } from 'lucide-react';
 import { computeAge } from '../../services/profileService';
 import { KnownAccount } from '../../services/authClient';
+import { BrandLogo, Button, GlassCard, TextField, SelectField } from '../ui';
 
 export type AuthMode = 'register' | 'signup' | 'login';
 
@@ -37,8 +37,6 @@ const CROSS: Record<AuthMode, AuthMode[]> = {
 
 export default function CitizenAuthScreen({ onSaveProfile, onLogin, onCreateAccount, initialMode = 'register', knownAccounts = [] }: Props) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
-  // Layout toggle — baliktad ang blue/form sa bawat pagpalit ng form.
-  const [flipped, setFlipped] = useState(initialMode === 'signup');
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -64,19 +62,16 @@ export default function CitizenAuthScreen({ onSaveProfile, onLogin, onCreateAcco
   // Ang na-register na email + password (para i-verify sa Sign Up form).
   const registeredRef = useRef<{ email: string; password: string } | null>(null);
 
-  const isBottom = flipped;
-  const isInitialTop = useRef(initialMode !== 'signup').current;
   const age = computeAge(birthday);
   const today = new Date().toISOString().split('T')[0];
 
   const [entering, setEntering] = useState(true);
   useEffect(() => {
-    const t = setTimeout(() => setEntering(false), 900);
+    const t = setTimeout(() => setEntering(false), 520);
     return () => clearTimeout(t);
   }, []);
 
   const changeMode = (next: AuthMode) => {
-    setFlipped((f) => !f);
     setError(null);
     setShowPw(false);
     if (next !== 'login') setQuickUser(null);
@@ -197,9 +192,16 @@ export default function CitizenAuthScreen({ onSaveProfile, onLogin, onCreateAcco
     }
   };
 
-  const inputCls =
-    'w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 focus:border-blue-500 focus:outline-none text-sm';
-  const labelCls = 'text-xs font-black text-slate-600 uppercase tracking-wider block mb-1';
+  const pwToggle = (
+    <button
+      type="button"
+      onClick={() => setShowPw((v) => !v)}
+      aria-label={showPw ? 'Hide password' : 'Show password'}
+      className="press grid h-8 w-8 place-items-center rounded-ctl text-muted transition-colors duration-[160ms] hover:bg-[var(--surface-sunken)] hover:text-ink"
+    >
+      {showPw ? <EyeOff size={16} strokeWidth={1.9} /> : <Eye size={16} strokeWidth={1.9} />}
+    </button>
+  );
 
   const mainLabel =
     mode === 'register' ? (busy ? 'CREATING…' : 'CREATE ACCOUNT')
@@ -207,298 +209,222 @@ export default function CitizenAuthScreen({ onSaveProfile, onLogin, onCreateAcco
     : (busy ? 'LOGGING IN…' : 'LOG IN');
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-100 via-blue-50 to-blue-200 text-slate-800 antialiased font-sans">
-      {/* Blue sheet (logo + text) — nasa taas sa register/sign up, nasa baba sa log in */}
-      <div
-        className={`splash-auth-sheet w-full min-h-[62vh] bg-gradient-to-b from-sky-400 to-blue-600 px-6 pt-24 pb-20 sm:pt-28 sm:pb-24 shadow-lg ${
-          isBottom ? 'sheet-login' : 'sheet-register'
-        } ${entering ? 'splash-sheet-drop' : ''}`}
-        style={{
-          borderRadius: isBottom
-            ? '4.5rem 4.5rem 0 0'
-            : '0 0 50% 50% / 0 0 4.5rem 4.5rem',
-        }}
-      >
-        <div
-          className={`flex flex-col items-center text-center transition-transform duration-700 ease-[cubic-bezier(0.33,1,0.68,1)] ${
-            isBottom ? 'translate-y-36' : '-translate-y-20'
-          }`}
+    <div className="app-bg min-h-screen px-5 pb-10 pt-8 sm:px-6 sm:pt-12">
+      <div className="mx-auto w-full max-w-[26rem]">
+        {/* Brand header */}
+        <header
+          className={
+            'flex flex-col items-center text-center transition-all duration-[520ms] ease-out ' +
+            (entering ? 'translate-y-3 opacity-0' : 'translate-y-0 opacity-100')
+          }
         >
-          <SplashLogo className="w-24 h-24 sm:w-28 sm:h-28 drop-shadow-2xl" />
-          <h1 className="font-black text-white text-2xl tracking-wider uppercase mt-1">
+          <BrandLogo className="h-20 w-20 select-none drop-shadow-[0_12px_24px_rgba(15,31,58,.26)]" />
+          <h1 className="mt-5 text-[24px] font-extrabold uppercase leading-none tracking-[.32em] text-ink">
             Bayani
           </h1>
-          <p className="text-xs text-blue-100 font-medium">
-            Safety in Every Step
-          </p>
-        </div>
-      </div>
+          <p className="t-body mt-2.5 text-muted">Safety in every step</p>
+        </header>
 
-      {/* Form card */}
-      <div className={`splash-auth-form-wrap ${isBottom ? 'form-wrap-login' : 'form-wrap-register'}`}>
-        <div className={`${isInitialTop ? 'splash-auth-form-login' : 'splash-auth-form'} w-full bg-white rounded-3xl border border-slate-200/80 shadow-sm p-4 space-y-3`}>
-          {knownAccounts.length > 0 && (
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Saved Accounts</span>
-              <div className="flex flex-wrap gap-2">
-                {knownAccounts.map((a) => {
-                  const selected = quickUser === a.username;
-                  return (
-                    <button
-                      key={a.username}
-                      type="button"
-                      onClick={() => selectSavedAccount(a.username)}
-                      disabled={busy}
-                      className={`flex items-center gap-1.5 py-1.5 pl-1.5 pr-3 rounded-full border text-xs font-bold transition-all active:scale-[0.97] disabled:opacity-60 ${
-                        selected
-                          ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-200'
-                          : 'border-slate-200 bg-white text-slate-600 hover:border-blue-300'
-                      }`}
-                    >
-                      <span className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-black uppercase">
-                        {a.username.charAt(0)}
-                      </span>
-                      {a.username}
-                    </button>
-                  );
-                })}
+        {/* Form card */}
+        <div
+          className={
+            'mt-7 transition-all duration-[520ms] ease-out ' +
+            (entering ? 'translate-y-4 opacity-0' : 'translate-y-0 opacity-100')
+          }
+        >
+          <GlassCard className="space-y-4">
+            {knownAccounts.length > 0 && (
+              <div>
+                <span className="t-caption mb-2 block text-muted">Saved accounts</span>
+                <div className="flex flex-wrap gap-2">
+                  {knownAccounts.map((a) => {
+                    const selected = quickUser === a.username;
+                    return (
+                      <button
+                        key={a.username}
+                        type="button"
+                        onClick={() => selectSavedAccount(a.username)}
+                        disabled={busy}
+                        className={
+                          'press flex items-center gap-1.5 rounded-full border py-1.5 pl-1.5 pr-3 text-[12px] font-bold transition-colors duration-[160ms] disabled:opacity-60 ' +
+                          (selected
+                            ? 'border-brand-600 bg-brand-50 text-brand-700'
+                            : 'border-[rgba(15,31,58,.10)] bg-[var(--surface)] text-muted hover:border-brand-200 dark:border-white/[.12]')
+                        }
+                      >
+                        <span className="grid h-5 w-5 place-items-center rounded-full bg-brand-600 text-[10px] font-extrabold uppercase text-white">
+                          {a.username.charAt(0)}
+                        </span>
+                        {a.username}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          )}
-          <form onSubmit={submit} className="space-y-4">
-            {mode === 'register' && (
-              <>
-                <div>
-                  <label className={labelCls}>Email</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="yourname@email.com"
-                      autoComplete="email"
-                      className={inputCls}
-                    />
-                  </div>
-                </div>
+            )}
 
-                <div>
-                  <label className={labelCls}>Full Name</label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Juan Dela Cruz"
-                      autoComplete="name"
-                      className={inputCls}
-                    />
-                  </div>
-                </div>
+            <form onSubmit={submit} className="space-y-4">
+              {mode === 'register' && (
+                <>
+                  <TextField
+                    label="Email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="yourname@email.com"
+                    autoComplete="email"
+                    leading={<Mail size={16} strokeWidth={1.9} />}
+                  />
 
-                <div>
-                  <label className={labelCls}>Gender</label>
-                  <select
+                  <TextField
+                    label="Full name"
+                    type="text"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Juan Dela Cruz"
+                    autoComplete="name"
+                    leading={<User size={16} strokeWidth={1.9} />}
+                  />
+
+                  <SelectField
+                    label="Gender"
                     value={gender}
                     onChange={(e) => setGender(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-blue-500 focus:outline-none text-sm bg-white"
                   >
                     <option value="">Select</option>
                     <option value="Female">Female</option>
                     <option value="Male">Male</option>
                     <option value="Prefer not to say">Prefer not to say</option>
-                  </select>
-                </div>
+                  </SelectField>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelCls}>Birthday</label>
-                    <div className="relative">
-                      <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input
-                        type="date"
-                        value={birthday}
-                        max={today}
-                        onChange={(e) => setBirthday(e.target.value)}
-                        className="w-full pl-9 pr-2 py-2 rounded-xl border border-slate-200 focus:border-blue-500 focus:outline-none text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className={labelCls}>Age</label>
-                    <input
-                      type="text"
-                      value={age ?? '—'}
-                      readOnly
-                      className="w-full px-3 py-2 rounded-xl border border-slate-100 bg-slate-50 text-slate-500 font-bold text-sm"
+                  <div className="grid grid-cols-2 gap-3">
+                    <TextField
+                      label="Birthday"
+                      type="date"
+                      value={birthday}
+                      max={today}
+                      onChange={(e) => setBirthday(e.target.value)}
+                      leading={<Calendar size={16} strokeWidth={1.9} />}
                     />
+                    <TextField label="Age" type="text" value={age ?? '—'} readOnly disabled />
                   </div>
-                </div>
 
-                <div>
-                  <label className={labelCls}>Password (Email Account)</label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
+                  <TextField
+                    label="Password (email account)"
+                    type={showPw ? 'text' : 'password'}
+                    value={emailPassword}
+                    onChange={(e) => setEmailPassword(e.target.value)}
+                    placeholder="Email account password"
+                    autoComplete="new-password"
+                    leading={<Lock size={16} strokeWidth={1.9} />}
+                    trailing={pwToggle}
+                  />
+                </>
+              )}
+
+              {mode === 'signup' && (
+                <>
+                  <TextField
+                    label="Email (registered)"
+                    type="email"
+                    value={suEmail}
+                    onChange={(e) => setSuEmail(e.target.value)}
+                    placeholder="yourname@email.com"
+                    autoComplete="email"
+                    leading={<Mail size={16} strokeWidth={1.9} />}
+                  />
+
+                  <TextField
+                    label="Password (registered)"
+                    type={showPw ? 'text' : 'password'}
+                    value={suPassword}
+                    onChange={(e) => setSuPassword(e.target.value)}
+                    placeholder="Registered password"
+                    autoComplete="current-password"
+                    leading={<Lock size={16} strokeWidth={1.9} />}
+                    trailing={pwToggle}
+                  />
+                </>
+              )}
+
+              {mode === 'login' && (
+                <>
+                  <TextField
+                    label="Username"
+                    type="text"
+                    value={username}
+                    onChange={(e) => onUsernameChange(e.target.value)}
+                    placeholder="username"
+                    autoComplete="username"
+                    maxLength={6}
+                    hint="Lowercase letters only, max 6 characters"
+                    leading={<User size={16} strokeWidth={1.9} />}
+                  />
+
+                  <TextField
+                    label={quickUser ? 'Password' : 'Create password'}
+                    type={showPw ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={quickUser ? 'Enter your password' : 'Create password'}
+                    autoComplete={quickUser ? 'current-password' : 'new-password'}
+                    leading={<Lock size={16} strokeWidth={1.9} />}
+                    trailing={pwToggle}
+                  />
+
+                  {!quickUser && (
+                    <TextField
+                      label="Confirm password"
                       type={showPw ? 'text' : 'password'}
-                      value={emailPassword}
-                      onChange={(e) => setEmailPassword(e.target.value)}
-                      placeholder="Email account password"
+                      value={confirm}
+                      onChange={(e) => setConfirm(e.target.value)}
+                      placeholder="Confirm password"
                       autoComplete="new-password"
-                      className="w-full pl-9 pr-10 py-2 rounded-xl border border-slate-200 focus:border-blue-500 focus:outline-none text-sm"
+                      leading={<Lock size={16} strokeWidth={1.9} />}
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowPw((v) => !v)}
-                      aria-label={showPw ? 'Hide password' : 'Show password'}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
-                    >
-                      {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
+                  )}
+                </>
+              )}
 
-            {mode === 'signup' && (
-              <>
-                <div>
-                  <label className={labelCls}>Email (Registered)</label>
-                  <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="email"
-                      value={suEmail}
-                      onChange={(e) => setSuEmail(e.target.value)}
-                      placeholder="yourname@email.com"
-                      autoComplete="email"
-                      className={inputCls}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className={labelCls}>Password (Registered)</label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type={showPw ? 'text' : 'password'}
-                      value={suPassword}
-                      onChange={(e) => setSuPassword(e.target.value)}
-                      placeholder="Registered password"
-                      autoComplete="current-password"
-                      className="w-full pl-9 pr-10 py-2 rounded-xl border border-slate-200 focus:border-blue-500 focus:outline-none text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPw((v) => !v)}
-                      aria-label={showPw ? 'Hide password' : 'Show password'}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
-                    >
-                      {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {mode === 'login' && (
-              <>
-                <div>
-                  <label className={labelCls}>Username</label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type="text"
-                      value={username}
-                      onChange={(e) => onUsernameChange(e.target.value)}
-                      placeholder="username"
-                      autoComplete="username"
-                      maxLength={6}
-                      className={inputCls}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className={labelCls}>{quickUser ? 'Password' : 'Create Password'}</label>
-                  <div className="relative">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <input
-                      type={showPw ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder={quickUser ? 'Enter your password' : 'Create password'}
-                      autoComplete={quickUser ? 'current-password' : 'new-password'}
-                      className="w-full pl-9 pr-10 py-2 rounded-xl border border-slate-200 focus:border-blue-500 focus:outline-none text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPw((v) => !v)}
-                      aria-label={showPw ? 'Hide password' : 'Show password'}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600"
-                    >
-                      {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                {!quickUser && (
-                  <div>
-                    <label className={labelCls}>Confirm Password</label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <input
-                        type={showPw ? 'text' : 'password'}
-                        value={confirm}
-                        onChange={(e) => setConfirm(e.target.value)}
-                        placeholder="Confirm password"
-                        autoComplete="new-password"
-                        className={inputCls}
-                      />
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {error && (
-              <p className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
-                {error}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={busy}
-              className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-extrabold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-            >
-              {mode === 'register' ? <UserPlus className="w-4 h-4" /> : <LogIn className="w-4 h-4" />}
-              {mainLabel}
-            </button>
-
-            <div className="flex items-center gap-3 pt-1">
-              <span className="h-px flex-1 bg-slate-200" />
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">or</span>
-              <span className="h-px flex-1 bg-slate-200" />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              {CROSS[mode].map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => goCross(m)}
-                  disabled={busy}
-                  className="py-2.5 rounded-xl border-2 border-blue-600 text-blue-700 hover:bg-blue-50 disabled:opacity-60 text-xs font-extrabold transition-all active:scale-[0.98]"
+              {error && (
+                <p
+                  role="alert"
+                  className="flex items-start gap-2 rounded-field border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-[12px] font-bold text-danger"
                 >
-                  {MODE_LABEL[m]}
-                </button>
-              ))}
-            </div>
-          </form>
+                  <AlertCircle size={15} strokeWidth={2} className="mt-px shrink-0" />
+                  {error}
+                </p>
+              )}
+
+              <Button
+                type="submit"
+                variant="primary"
+                fullWidth
+                disabled={busy}
+                icon={busy ? <Loader2 size={16} strokeWidth={2.2} className="animate-spin" /> : mode === 'register' ? <UserPlus size={16} strokeWidth={1.9} /> : <LogIn size={16} strokeWidth={1.9} />}
+              >
+                {mainLabel}
+              </Button>
+
+              <div className="flex items-center gap-3">
+                <span className="h-px flex-1 bg-[rgba(15,31,58,.08)] dark:bg-white/[.10]" />
+                <span className="t-caption text-muted">or</span>
+                <span className="h-px flex-1 bg-[rgba(15,31,58,.08)] dark:bg-white/[.10]" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {CROSS[mode].map((m) => (
+                  <Button key={m} type="button" variant="secondary" disabled={busy} onClick={() => goCross(m)}>
+                    {MODE_LABEL[m]}
+                  </Button>
+                ))}
+              </div>
+            </form>
+          </GlassCard>
+
+          <p className="t-caption mt-5 text-center text-muted">
+            Protected by RA 9262 · Data Privacy Act of 2012
+          </p>
         </div>
       </div>
     </div>

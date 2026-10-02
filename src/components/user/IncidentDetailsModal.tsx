@@ -1,6 +1,7 @@
 import React from 'react';
-import { X, Clock, MapPin, Radio, Mic, Shield, Users, CheckCircle2, AlertCircle, FileText } from 'lucide-react';
+import { Clock, MapPin, Mic, Shield, Users, CheckCircle2, FileText } from 'lucide-react';
 import { Incident } from '../../types';
+import { Badge, Button, Sheet, type BadgeTone } from '../ui';
 
 interface IncidentDetailsModalProps {
   incident: Incident | null;
@@ -8,6 +9,26 @@ interface IncidentDetailsModalProps {
   onClose: () => void;
   onOpenAudioEvidence?: (incident: Incident) => void;
 }
+
+const statusTone = (status: string): BadgeTone => {
+  switch (status) {
+    case 'ACTIVE':
+    case 'PENDING':
+      return 'danger';
+    case 'RESPONDING':
+    case 'RESPONDER EN ROUTE':
+    case 'ON SCENE':
+    case 'WAIT FOR ME':
+    case 'ON THE WAY':
+      return 'warning';
+    case 'RESOLVED':
+      return 'success';
+    case 'CANCELLED':
+      return 'neutral';
+    default:
+      return 'brand';
+  }
+};
 
 export const IncidentDetailsModal: React.FC<IncidentDetailsModalProps> = ({
   incident,
@@ -17,189 +38,193 @@ export const IncidentDetailsModal: React.FC<IncidentDetailsModalProps> = ({
 }) => {
   if (!isOpen || !incident) return null;
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'ACTIVE':
-        return 'bg-red-50 text-red-700 border-red-200';
-      case 'RESPONDING':
-      case 'RESPONDER EN ROUTE':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'WAIT FOR ME':
-      case 'ON THE WAY':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'RESOLVED':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-      case 'CANCELLED':
-        return 'bg-slate-100 text-slate-700 border-slate-200';
-      default:
-        return 'bg-blue-50 text-blue-700 border-blue-200';
-    }
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn">
-      <div 
-        id="incident-details-modal"
-        className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto border border-slate-200 shadow-2xl p-5 space-y-4"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 sticky top-0 bg-white z-10">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
-              <FileText className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="text-[10px] font-mono text-slate-400 font-bold block">
-                {incident.incidentCode}
-              </span>
-              <h3 className="font-extrabold text-slate-900 text-sm">
-                Incident Details
-              </h3>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Status Pill & Summary */}
-        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className={`text-xs font-black uppercase px-2.5 py-1 rounded-full border ${getStatusBadge(incident.status)}`}>
-              {incident.status}
-            </span>
-            <span className="text-xs text-slate-500 font-medium">
-              {incident.date} • {incident.timeActivated}
-            </span>
-          </div>
-
-          <p className="text-xs text-slate-600 leading-relaxed pt-1">
-            {incident.notes || 'Emergency squeeze trigger activated on wearable thigh band. Telemetry dispatched via cellular network.'}
-          </p>
-        </div>
-
-        {/* Location & GPS Info */}
-        <div className="space-y-2 text-xs">
-          <div className="flex items-center gap-2 text-slate-800 font-bold">
-            <MapPin className="w-4 h-4 text-blue-600" />
-            <span>Incident Location</span>
-          </div>
-          <div className="p-3 rounded-2xl bg-white border border-slate-200/80 text-xs">
-            <span className="font-bold text-slate-900 block">{incident.location.address}</span>
-            <span className="text-slate-500 block">{incident.location.barangay}, {incident.location.city}, {incident.location.country}</span>
-            <span className="font-mono text-[10px] text-slate-400 block mt-1">
-              Coordinates: {incident.location.lat.toFixed(6)}° N, {incident.location.lng.toFixed(6)}° E (±{incident.location.accuracyRadiusMeters}m)
-            </span>
-          </div>
-        </div>
-
-        {/* Status Telemetry Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-            <span className="text-[10px] text-slate-400 block font-bold uppercase">GPS Status</span>
-            <span className="font-bold text-emerald-600 block">{incident.gpsStatus}</span>
-          </div>
-          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-            <span className="text-[10px] text-slate-400 block font-bold uppercase">Audio Status</span>
-            <span className="font-bold text-purple-700 block">{incident.audioStatus}</span>
-          </div>
-          <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 col-span-2 sm:col-span-1">
-            <span className="text-[10px] text-slate-400 block font-bold uppercase">Comms</span>
-            <span className="font-bold text-blue-600 block">{incident.communicationStatus}</span>
-          </div>
-        </div>
-
-        {/* Authorities & Contacts Status */}
-        <div className="p-3 rounded-2xl bg-blue-50/60 border border-blue-100 text-xs space-y-1.5">
-          <div className="flex items-center justify-between">
-            <span className="text-slate-600 flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-blue-600" />
-              <span>Trusted Contacts Notified:</span>
-            </span>
-            <span className="font-bold text-emerald-700 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> {incident.trustedContactsNotified ? 'Notified' : 'Pending'}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-slate-600 flex items-center gap-1.5">
-              <Shield className="w-3.5 h-3.5 text-blue-600" />
-              <span>Authorities Dispatched:</span>
-            </span>
-            <span className="font-bold text-emerald-700 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> {incident.authoritiesNotified ? 'Dispatched' : 'Pending'}
-            </span>
-          </div>
-        </div>
-
-        {/* Assigned Responder (if available) */}
-        {incident.assignedResponder && (
-          <div className="p-3 rounded-2xl bg-white border border-slate-200/80 text-xs space-y-1">
-            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">
-              Assigned Responder Unit
-            </span>
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="font-extrabold text-slate-900 block">{incident.assignedResponder.name}</span>
-                <span className="text-slate-500 text-[11px]">{incident.assignedResponder.unit}</span>
-              </div>
-              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                ETA: {incident.assignedResponder.eta}
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Full Step-by-Step Incident Timeline */}
-        <div className="space-y-2 pt-2 border-t border-slate-100">
-          <h4 className="font-bold text-slate-900 text-xs flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-slate-500" />
-            <span>Incident Event Timeline</span>
-          </h4>
-
-          <div className="space-y-2.5 pl-1">
-            {incident.timeline.map((step, idx) => (
-              <div key={step.id || idx} className="flex items-start gap-2.5 text-xs">
-                <span className="w-5 h-5 rounded-full bg-emerald-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                  ✓
-                </span>
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800">{step.title}</span>
-                    <span className="text-[10px] font-mono text-slate-400">{step.timestamp}</span>
-                  </div>
-                  <p className="text-[11px] text-slate-500">{step.description}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Footer Actions */}
-        <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+    <Sheet
+      id="incident-details-modal"
+      isOpen={isOpen}
+      onClose={onClose}
+      size="lg"
+      title="Incident details"
+      subtitle={incident.incidentCode}
+      footer={
+        <div className="flex flex-col-reverse gap-2.5 sm:flex-row">
           {onOpenAudioEvidence && (
-            <button
+            <Button
+              variant="secondary"
+              fullWidth
+              icon={<Mic size={16} strokeWidth={1.9} />}
               onClick={() => {
                 onClose();
                 onOpenAudioEvidence(incident);
               }}
-              className="text-xs font-bold text-purple-700 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 px-3 py-2 rounded-xl transition-all flex items-center gap-1.5"
             >
-              <Mic className="w-3.5 h-3.5" />
-              <span>Inspect Audio Evidence</span>
-            </button>
+              Inspect audio evidence
+            </Button>
           )}
-
-          <button
-            onClick={onClose}
-            className="ml-auto px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 transition-colors"
-          >
+          <Button variant="primary" fullWidth onClick={onClose}>
             Close
-          </button>
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        {/* Status + summary */}
+        <div className="rounded-card bg-[var(--surface-sunken)] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Badge tone={statusTone(incident.status)}>{incident.status}</Badge>
+            <span className="font-mono text-[11px] text-muted">
+              {incident.date} · {incident.timeActivated}
+            </span>
+          </div>
+          <p className="t-body mt-2.5 text-muted">
+            {incident.notes ||
+              'Emergency squeeze trigger activated on wearable thigh band. Telemetry dispatched via cellular network.'}
+          </p>
+        </div>
+
+        {/* Location */}
+        <div>
+          <p className="mb-2 flex items-center gap-1.5 text-[13px] font-extrabold text-ink">
+            <MapPin size={16} strokeWidth={1.9} className="text-brand-600" />
+            Incident location
+          </p>
+          <div className="rounded-card border border-[rgba(15,31,58,.05)] p-3.5 dark:border-white/[.08]">
+            <p className="text-[13px] font-extrabold text-ink">{incident.location.address}</p>
+            <p className="t-body text-muted">
+              {incident.location.barangay}, {incident.location.city}, {incident.location.country}
+            </p>
+            <p className="mt-1 break-all font-mono text-[10px] text-muted">
+              {incident.location.lat.toFixed(6)}° N, {incident.location.lng.toFixed(6)}° E (±
+              {incident.location.accuracyRadiusMeters}m)
+            </p>
+          </div>
+        </div>
+
+        {/* Telemetry grid */}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <Metric label="GPS status" value={incident.gpsStatus} tone="success" />
+          <Metric label="Audio status" value={incident.audioStatus} />
+          <Metric label="Comms" value={incident.communicationStatus} tone="brand" />
+        </div>
+
+        {/* Contacts & authorities */}
+        <div className="space-y-2 rounded-card border border-brand-200 bg-brand-50 p-3.5">
+          <FlagRow
+            icon={<Users size={15} strokeWidth={1.9} />}
+            label="Trusted contacts notified"
+            done={incident.trustedContactsNotified}
+            doneLabel="Notified"
+          />
+          <FlagRow
+            icon={<Shield size={15} strokeWidth={1.9} />}
+            label="Authorities dispatched"
+            done={incident.authoritiesNotified}
+            doneLabel="Dispatched"
+          />
+        </div>
+
+        {/* Responder */}
+        {incident.assignedResponder && (
+          <div className="rounded-card border border-[rgba(15,31,58,.05)] p-3.5 dark:border-white/[.08]">
+            <p className="t-caption mb-2 text-muted">Assigned responder unit</p>
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-[13px] font-extrabold text-ink">
+                  {incident.assignedResponder.name}
+                </p>
+                <p className="t-body truncate text-muted">{incident.assignedResponder.unit}</p>
+              </div>
+              <Badge tone="brand">ETA {incident.assignedResponder.eta}</Badge>
+            </div>
+          </div>
+        )}
+
+        {/* Timeline */}
+        <div>
+          <p className="mb-3 flex items-center gap-1.5 text-[13px] font-extrabold text-ink">
+            <Clock size={16} strokeWidth={1.9} className="text-muted" />
+            Incident event timeline
+          </p>
+          <ol className="space-y-3">
+            {incident.timeline.map((step, idx) => {
+              const done = step.status === 'completed';
+              return (
+                <li key={step.id || idx} className="flex items-start gap-3">
+                  <span
+                    className={
+                      'mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full ' +
+                      (done ? 'bg-success text-white' : 'bg-[var(--surface-sunken)] text-muted')
+                    }
+                  >
+                    {done ? <CheckCircle2 size={12} strokeWidth={3} /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className={'text-[13px] font-extrabold ' + (done ? 'text-ink' : 'text-muted')}>
+                        {step.title}
+                      </p>
+                      <span className="shrink-0 font-mono text-[10px] text-muted">{step.timestamp}</span>
+                    </div>
+                    <p className="t-body text-muted">{step.description}</p>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
         </div>
       </div>
-    </div>
+    </Sheet>
   );
 };
+
+function Metric({ label, value, tone }: { label: string; value: string; tone?: 'success' | 'brand' }) {
+  return (
+    <div className="rounded-ctl bg-[var(--surface-sunken)] px-3 py-2.5">
+      <p className="t-caption text-muted">{label}</p>
+      <p
+        className={
+          'truncate text-[13px] font-extrabold ' +
+          (tone === 'success' ? 'text-success' : tone === 'brand' ? 'text-brand-600' : 'text-ink')
+        }
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function FlagRow({
+  icon,
+  label,
+  done,
+  doneLabel,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  done: boolean;
+  doneLabel: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="t-body flex min-w-0 items-center gap-1.5 text-brand-700">
+        {icon}
+        <span className="truncate">{label}</span>
+      </span>
+      <span
+        className={
+          'flex shrink-0 items-center gap-1 text-[12px] font-extrabold ' +
+          (done ? 'text-success' : 'text-muted')
+        }
+      >
+        {done ? (
+          <>
+            <CheckCircle2 size={14} strokeWidth={2.2} />
+            {doneLabel}
+          </>
+        ) : (
+          'Pending'
+        )}
+      </span>
+    </div>
+  );
+}

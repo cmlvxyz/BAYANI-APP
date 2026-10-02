@@ -13,22 +13,6 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-/** Header logo: loads the full PNG logo from the Response Center (bayani-alert, port 4000);
- *  falls back to the local SVG shield so the app still shows a logo when RC is offline. */
-const HeaderLogo = ({ className }: { className?: string }) => {
-  const [logoFailed, setLogoFailed] = useState(false);
-  if (logoFailed) {
-    return <img src="/logo.svg" alt="Bayani App logo" className={`${className} object-contain`} />;
-  }
-  return (
-    <img
-      src="http://localhost:4000/src/assets/images/logo%20(2).png"
-      alt="Bayani App logo"
-      className={`${className} object-contain`}
-      onError={() => setLogoFailed(true)}
-    />
-  );
-};
 import {
   ShieldAlert,
   Bell,
@@ -40,6 +24,9 @@ import {
   X,
   LogOut,
 } from 'lucide-react';
+
+// Design system
+import { GlassHeader, IconButton, BottomNavigation, BrandLogo, type NavTab } from './components/ui';
 
 // Services
 import { hardwareService, WearableDeviceTelemetry, BALANGA_LOCATION } from './services/hardwareService';
@@ -69,13 +56,7 @@ import { UserProfileModal } from './components/user/UserProfileModal';
 import { AudioEvidenceModal } from './components/user/AudioEvidenceModal';
 import { IncidentDetailsModal } from './components/user/IncidentDetailsModal';
 
-interface NavItem {
-  key: UserNavTab;
-  label: string;
-  icon: React.FC<{ className?: string }>;
-}
-
-const BOTTOM_NAV: NavItem[] = [
+const BOTTOM_NAV: NavTab<UserNavTab>[] = [
   { key: 'home', label: 'Home', icon: Home },
   { key: 'map', label: 'Map', icon: MapPin },
   { key: 'contacts', label: 'Contacts', icon: Users },
@@ -411,8 +392,6 @@ export default function App() {
     }
   };
 
-  const isActive = (key: UserNavTab) => navTab === key;
-
   // Authentication gate — splash animation, then sign-up / sign-in.
   if (!session) {
     if (!splashDone) {
@@ -437,81 +416,126 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-100 via-blue-50 to-blue-200 text-slate-800 antialiased font-sans">
-      {/* ===== GLOBAL TOP HEADER ===== */}
-      {/* Global top header — FIXED, hindi gumagalaw kahit mag-scroll */}
-      <div className="fixed top-5 left-0 right-0 z-40 flex justify-center pointer-events-none">
-      <header
+    <div className="app-bg min-h-[100dvh] text-ink antialiased">
+      {/* ===== FLOATING GLASS HEADER ===== */}
+      <GlassHeader
         id="bayani-app-header"
-        className="pointer-events-auto bg-white rounded-4xl shadow-sm w-[min(70%,40rem)] h-14 px-4 sm:px-6"
-      >
-        <div className="flex items-center justify-between gap-3 h-full">
-          {/* Brand */}
-          <div className="flex items-center gap-2.5">
-            <HeaderLogo className="w-10 h-10 sm:w-11 sm:h-11 shrink-0" />
-            <div className="min-w-0">
-              <h1 className="font-black text-slate-900 text-sm sm:text-base tracking-wider uppercase leading-tight">
-                BAYANI
-              </h1>
-              <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium leading-tight">
-                Safety in Every Step
-              </p>
-            </div>
-          </div>
-
-          {/* Session + Compact menu: SOS, Bridge, Notifications, Profile */}
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1.5 rounded-full bg-blue-600/10 border border-blue-200 text-blue-700 text-[11px] font-extrabold uppercase tracking-wider">
-              {session.user.username}
-            </span>
-            <div className="relative" ref={menuRef}>
-            <button
-              id="bayani-app-header-menu"
-              onClick={() => setIsMenuOpen((v) => !v)}
-              aria-label="Open menu"
-              aria-expanded={isMenuOpen}
-              className="relative p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 active:scale-95 transition-all"
+        title="BAYANI"
+        subtitle="Safety in Every Step"
+        leading={
+          <BrandLogo className="h-8 w-8 shrink-0 object-contain" />
+        }
+        actions={
+          <>
+            <IconButton
+              label="Open notifications"
+              dot={unreadCount > 0}
+              onClick={() => setIsNotificationsOpen(true)}
             >
-              {isMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-              {!isMenuOpen && unreadCount > 0 && (
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-400 ring-2 ring-white animate-pulse" />
-              )}
+              <Bell size={19} strokeWidth={1.9} />
+            </IconButton>
+
+            <button
+              type="button"
+              onClick={() => setIsProfileOpen(true)}
+              aria-label="Open profile"
+              className="press grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-600 text-[13px] font-extrabold text-white transition-colors duration-[160ms] hover:bg-brand-700 after:absolute after:-inset-1 after:content-['']"
+            >
+              {session.user.username.charAt(0).toUpperCase()}
             </button>
 
-            {isMenuOpen && (
-              <div className="absolute right-0 top-full mt-1.5 z-50 w-56 rounded-xl bg-white border border-slate-200 shadow-xl overflow-hidden">
+            <div className="relative" ref={menuRef}>
+              <IconButton
+                label="Open menu"
+                expanded={isMenuOpen}
+                controls="bayani-app-header-menu-panel"
+                onClick={() => setIsMenuOpen((v) => !v)}
+              >
+                {isMenuOpen ? (
+                  <X size={19} strokeWidth={1.9} />
+                ) : (
+                  <Menu size={19} strokeWidth={1.9} />
+                )}
+              </IconButton>
+            </div>
+          </>
+        }
+        menuId="bayani-app-header-menu"
+        menu={
+          isMenuOpen ? (
+            <>
+              {/* Click-away backdrop */}
+              <div className="fixed inset-0 z-40" onClick={() => setIsMenuOpen(false)} />
+              <div
+                id="bayani-app-header-menu-panel"
+                role="menu"
+                aria-label="Account menu"
+                className="glass animate-pop-in absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-panel p-1.5"
+              >
+                {/* Session identity */}
+                <div className="flex items-center gap-2.5 rounded-card bg-brand-50 px-3 py-2.5">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-600 text-[12px] font-extrabold text-white">
+                    {session.user.username.charAt(0).toUpperCase()}
+                  </span>
+                  <div className="min-w-0">
+                    <span className="block truncate text-[12px] font-extrabold text-ink">
+                      {session.user.username}
+                    </span>
+                    <span className="block text-[10px] font-semibold uppercase tracking-[0.06em] text-muted">
+                      Protected citizen
+                    </span>
+                  </div>
+                </div>
+
                 {/* SOS status */}
                 <button
+                  type="button"
                   onClick={() => setIsMenuOpen(false)}
-                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-slate-50 transition-colors"
+                  role="menuitem"
+                  className="press mt-1.5 flex w-full items-center gap-2.5 rounded-ctl px-3 py-2.5 text-left transition-colors duration-[160ms] hover:bg-[var(--surface-sunken)]"
                 >
-                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isEmergencyActive ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'}`} />
-                  <span className={`text-[11px] font-black uppercase tracking-wider ${isEmergencyActive ? 'text-red-600' : 'text-emerald-600'}`}>
+                  <span
+                    className={`h-2 w-2 shrink-0 rounded-full ${isEmergencyActive ? 'bg-danger' : 'bg-success'}`}
+                  />
+                  <span
+                    className={`t-caption ${isEmergencyActive ? 'text-danger' : 'text-success'}`}
+                  >
                     {isEmergencyActive ? 'SOS Active' : 'Protection Armed'}
                   </span>
                 </button>
 
                 {/* Bridge status */}
                 <button
+                  type="button"
                   onClick={() => setIsMenuOpen(false)}
-                  title={bridgeOnline ? 'Connected to Response Center (port 4000)' : 'Bridge offline — start bridge-server.mjs'}
-                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-slate-50 transition-colors"
+                  role="menuitem"
+                  title={
+                    bridgeOnline
+                      ? 'Connected to Response Center (port 4000)'
+                      : 'Bridge offline — start bridge-server.mjs'
+                  }
+                  className="press flex w-full items-center gap-2.5 rounded-ctl px-3 py-2.5 text-left transition-colors duration-[160ms] hover:bg-[var(--surface-sunken)]"
                 >
-                  <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${bridgeOnline ? 'bg-blue-500' : 'bg-red-400'} animate-pulse`} />
-                  <span className={`text-[11px] font-black uppercase tracking-wider ${bridgeOnline ? 'text-blue-600' : 'text-red-600'}`}>
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${bridgeOnline ? 'bg-brand-500' : 'bg-warn'}`} />
+                  <span className={`t-caption ${bridgeOnline ? 'text-brand-600' : 'text-warn'}`}>
                     {bridgeOnline ? 'Bridge Link' : 'Bridge Off'}
                   </span>
                 </button>
 
                 {/* Notifications */}
                 <button
-                  onClick={() => { setIsMenuOpen(false); setIsNotificationsOpen(true); }}
-                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-slate-50 transition-colors"
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setIsNotificationsOpen(true);
+                  }}
+                  role="menuitem"
+                  className="press flex w-full items-center gap-2.5 rounded-ctl px-3 py-2.5 text-left transition-colors duration-[160ms] hover:bg-[var(--surface-sunken)]"
                 >
-                  <Bell className="w-4 h-4 text-slate-500 shrink-0" />
-                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-600">Notifications</span>
+                  <Bell size={16} strokeWidth={1.9} className="shrink-0 text-muted" />
+                  <span className="t-caption text-muted">Notifications</span>
                   {unreadCount > 0 && (
-                    <span className="ml-auto w-5 h-5 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                    <span className="ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-danger px-1.5 text-[10px] font-extrabold text-white">
                       {unreadCount}
                     </span>
                   )}
@@ -519,74 +543,65 @@ export default function App() {
 
                 {/* Profile */}
                 <button
-                  onClick={() => { setIsMenuOpen(false); setIsProfileOpen(true); }}
-                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-slate-50 transition-colors"
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    setIsProfileOpen(true);
+                  }}
+                  role="menuitem"
+                  className="press flex w-full items-center gap-2.5 rounded-ctl px-3 py-2.5 text-left transition-colors duration-[160ms] hover:bg-[var(--surface-sunken)]"
                 >
-                  <ShieldAlert className="w-4 h-4 text-slate-500 shrink-0" />
-                  <span className="text-[11px] font-black uppercase tracking-wider text-slate-600">Profile</span>
+                  <ShieldAlert size={16} strokeWidth={1.9} className="shrink-0 text-muted" />
+                  <span className="t-caption text-muted">Profile</span>
                 </button>
-              {/* Log out */}
+
+                {/* Log out */}
                 <button
-                  onClick={() => { setIsMenuOpen(false); handleLogout(); }}
-                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left hover:bg-red-50 transition-colors"
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    handleLogout();
+                  }}
+                  role="menuitem"
+                  className="press flex w-full items-center gap-2.5 rounded-ctl px-3 py-2.5 text-left transition-colors duration-[160ms] hover:bg-danger-soft"
                 >
-                  <LogOut className="w-4 h-4 text-red-500 shrink-0" />
-                  <span className="text-[11px] font-black uppercase tracking-wider text-red-600">Log out</span>
+                  <LogOut size={16} strokeWidth={1.9} className="shrink-0 text-danger" />
+                  <span className="t-caption text-danger">Log out</span>
                 </button>
               </div>
-            )}
-            </div>
-          </div>
-        </div>
-      </header>
-      </div>
+            </>
+          ) : null
+        }
+      />
 
       {/* ===== MAIN CONTENT ===== */}
-      <main className="min-w-0 pb-24 pt-20" id="bayani-app-main-content">
-        <div className="min-h-full flex flex-col">
-          <div className="flex-1 p-4 sm:p-6 w-full">
-            {renderCitizenScreen()}
-          </div>
+      <main
+        id="bayani-app-main-content"
+        className="mx-auto w-full max-w-[var(--app-max)] px-4 pb-[var(--dock-space)] pt-[76px]"
+      >
+        <div key={navTab} className="animate-screen-in">
+          {renderCitizenScreen()}
         </div>
       </main>
 
-      {/* ===== BOTTOM NAVIGATION (always visible) ===== */}
-      <nav
+      {/* ===== FLOATING GLASS BOTTOM NAVIGATION ===== */}
+      <BottomNavigation<UserNavTab>
         id="bayani-app-bottom-nav"
-        aria-label="Bottom Navigation"
-        className="fixed bottom-5 left-0 right-0 z-40 bg-white/70 backdrop-blur-md rounded-4xl shadow-sm mx-auto w-[min(80%,40rem)] border border-slate-200/70 select-none"
-      >
-        <div className="grid grid-cols-4 h-14">
-          {BOTTOM_NAV.map((item) => {
-            const Icon = item.icon;
-            const active = isActive(item.key);
-            return (
-              <button
-                key={item.key}
-                onClick={() => setNavTab(item.key)}
-                className={`flex flex-col items-center justify-center gap-1 transition-all active:scale-95 touch-manipulation ${
-                  active ? 'text-blue-600 font-bold' : 'text-slate-400'
-                }`}
-              >
-                <div className="relative">
-                  <Icon className={`w-5 h-5 ${active ? 'scale-110' : ''}`} />
-                  {item.key === 'home' && isEmergencyActive && (
-                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-400 animate-ping" />
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </nav>
+        items={BOTTOM_NAV}
+        active={navTab}
+        onChange={setNavTab}
+        alertOn={isEmergencyActive ? ['home'] : []}
+      />
 
       {/* ===== RESPONDER STATUS TOAST ===== */}
       {statusToast && (
         <div
           role="status"
-          className="fixed bottom-24 right-4 z-[80] max-w-[80vw] whitespace-nowrap px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold tracking-wide shadow-xl border border-emerald-300 animate-toast-pop"
+          className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--dock-space)+8px)] z-[80] flex justify-center px-4"
         >
-          {statusToast}
+          <div className="animate-toast-pop max-w-full rounded-field bg-success px-4 py-2.5 text-[12px] font-bold tracking-wide text-white shadow-[0_8px_24px_-10px_rgba(5,150,105,.9)]">
+            {statusToast}
+          </div>
         </div>
       )}
 
