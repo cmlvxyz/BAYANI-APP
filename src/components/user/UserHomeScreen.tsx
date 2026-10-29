@@ -3,7 +3,6 @@ import {
   ShieldCheck,
   MapPin,
   Users,
-  BatteryCharging,
   Wifi,
   Radio,
   Mic,
@@ -16,12 +15,16 @@ import {
   History,
   Phone,
   MapPinned,
+  Siren,
+  Loader2,
+  Link2,
+  Link2Off,
 } from 'lucide-react';
-import { Incident, UserNavTab } from '../../types';
+import { EmergencyContactItem, Incident, UserNavTab } from '../../types';
 import { WearableDeviceTelemetry, hardwareService, BALANGA_LOCATION } from '../../services/hardwareService';
-import { watchGeolocation, ResolvedLocation } from '../../services/geolocationService';
-import { LiveGoogleMap, FALLBACK_COORDS } from '../LiveGoogleMap';
-import { Badge, Button, GlassCard, GlassCardButton, Sheet, LinkButton } from '../ui';
+import { LiveGoogleMap } from '../LiveGoogleMap';
+import { Badge, Button, GlassCard, GlassCardButton, Sheet, LinkButton, Timeline } from '../ui';
+import type { UseLiveLocationResult } from '../../hooks/useLiveLocation';
 
 interface UserHomeScreenProps {
   telemetry: WearableDeviceTelemetry;
@@ -29,11 +32,23 @@ interface UserHomeScreenProps {
   onSimulateHardwareSOS: () => void;
   onConfirmHelped: () => void;
   onNavigateTab: (tab: UserNavTab) => void;
+  onOpenIncident?: (incident: Incident) => void;
   stealthMode: boolean;
   /** True while the app is requesting the exact GPS fix before raising the SOS. */
   locating: boolean;
   /** User-facing GPS error message (alert is NOT sent) — null when idle. */
   locationError: string | null;
+  /**
+   * Shared device GPS watcher owned by the app shell. The citizen never has to
+   * set anything — the manual override below is optional and testing-only.
+   */
+  liveLocation: UseLiveLocationResult;
+  /** Live link between this app and the Response Center backend. */
+  bridgeOnline: boolean;
+  /** Emergency contacts stored for this account (count shown on the dashboard). */
+  contacts: EmergencyContactItem[];
+  /** Alert history, newest first, as loaded from the backend. */
+  incidents: Incident[];
 }
 
 export const UserHomeScreen: React.FC<UserHomeScreenProps> = ({
@@ -42,43 +57,33 @@ export const UserHomeScreen: React.FC<UserHomeScreenProps> = ({
   onSimulateHardwareSOS,
   onConfirmHelped,
   onNavigateTab,
+  onOpenIncident,
   stealthMode,
   locating,
   locationError,
+  liveLocation,
+  bridgeOnline,
+  contacts,
+  incidents,
 }) => {
-  const [showSimNotice, setShowSimNotice] = useState(true);
   const [switchOn, setSwitchOn] = useState(false);
   const [responderSheetOpen, setResponderSheetOpen] = useState(false);
-  // Automatic location: device GPS, falling back to IP geolocation. The citizen
-  // never has to set anything — the manual override below is optional.
-  const [autoLocation, setAutoLocation] = useState<ResolvedLocation | null>(null);
-  const [autoLocating, setAutoLocating] = useState(true);
-  const isEmergency = telemetry.event === 'SOS' || (activeIncident && activeIncident.status !== 'RESOLVED' && activeIncident.status !== 'CANCELLED');
+  const { fix: autoFix, place: autoPlace, phase: livePhase } = liveLocation;
+  const isEmergency =
+    telemetry.event === 'SOS' ||
+    (activeIncident && activeIncident.status !== 'RESOLVED' && activeIncident.status !== 'CANCELLED');
 
-  useEffect(() => {
-    const cleanup = watchGeolocation(
-      (loc) => {
-        setAutoLocation(loc);
-        setAutoLocating(false);
-      },
-      () => {
-        setAutoLocating(false);
-      },
-    );
-    return cleanup;
-  }, []);
-
-  // Slide the SOS switch back to OFF once the emergency is resolved/cancelled
+  // Slide the SOS control back to OFF once the emergency is resolved/cancelled
   useEffect(() => {
     if (!isEmergency) setSwitchOn(false);
   }, [isEmergency]);
 
-  // If the GPS fix failed, the alarm was NOT sent — revert the switch.
+  // If the GPS fix failed, the alarm was NOT sent — revert the control.
   useEffect(() => {
     if (locationError) setSwitchOn(false);
   }, [locationError]);
 
-  // Animate the switch to ON first, then fire the SOS
+  // Animate the control to ON first, then fire the SOS (unchanged trigger).
   const handlePressSOS = () => {
     if (switchOn || locating) return;
     setSwitchOn(true);
@@ -111,108 +116,108 @@ export const UserHomeScreen: React.FC<UserHomeScreenProps> = ({
     danger: 'bg-danger-soft text-danger',
   } as const;
 
-  const mapLat = activeIncident?.location.lat || FALLBACK_COORDS.lat;
-  const mapLng = activeIncident?.location.lng || FALLBACK_COORDS.lng;
+  // Emergency map anchors on the real incident position, then the live device
+  // fix, then the wearable's last known point. Never a hardcoded city.
+  const incidentHasCoords = Boolean(
+    activeIncident && (activeIncident.location.lat !== 0 || activeIncident.location.lng !== 0),
+  );
+  const mapLat = incidentHasCoords ? activeIncident!.location.lat : (autoFix?.lat ?? telemetry.latitude);
+  const mapLng = incidentHasCoords ? activeIncident!.location.lng : (autoFix?.lng ?? telemetry.longitude);
+  const mapHasCoords = mapLat !== 0 || mapLng !== 0;
+
+  const activeContacts = contacts.filter((c) => c.isActive !== false).length;
+  const recentIncidents = incidents.slice(0, 3);
 
   return (
-    <div id="user-home-screen" className="space-y-5 pb-6">
+    <div id="user-home-screen" className="space-y-4 pb-6">
       {/* ============ 1. SAFE STATE ============ */}
       {!isEmergency && (
         <>
-          {/* Greeting + headline */}
+          {/* ---- Branding / greeting ---- */}
           <header className="animate-rise-in">
-            <p className="t-body font-semibold text-muted">
-              {new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening'}
-            </p>
-            <h2 className="t-display mt-1.5 text-ink">
-              You&rsquo;re protected. Help is one tap away.
-            </h2>
+            <div className="flex items-center gap-2">
+              <span className="grid h-7 w-7 shrink-0 place-items-center rounded-ctl bg-brand-600 text-white">
+                <ShieldCheck size={15} strokeWidth={2.2} />
+              </span>
+              <p className="t-caption text-muted">
+                {new Date().getHours() < 12
+                  ? 'Good morning'
+                  : new Date().getHours() < 18
+                    ? 'Good afternoon'
+                    : 'Good evening'}
+              </p>
+            </div>
           </header>
 
-          {/* Status chips */}
-          <div className="animate-stagger flex flex-wrap gap-2" style={{ ['--i' as string]: 0 }}>
-            <Badge tone="success" icon={<MapPin size={12} strokeWidth={2.2} />}>
-              Location on
-            </Badge>
-            <Badge tone="brand" icon={<Users size={12} strokeWidth={2.2} />}>
-              Contacts ready
-            </Badge>
-            <Badge tone="neutral" icon={<BatteryCharging size={12} strokeWidth={2.2} />}>
-              Band {telemetry.battery}%
-            </Badge>
-          </div>
-
-          {/* Device readiness */}
-          <GlassCard className="animate-stagger" style={{ ['--i' as string]: 1 } as React.CSSProperties}>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <ReadinessTile
-                icon={<Radio size={15} strokeWidth={1.9} />}
-                label="Device"
-                value={telemetry.bleConnected ? 'Connected' : 'Offline'}
-                tone={telemetry.bleConnected ? 'success' : 'danger'}
-              />
-              <ReadinessTile
-                icon={<MapPin size={15} strokeWidth={1.9} />}
-                label="GPS"
-                value={telemetry.gpsFix}
-                tone={telemetry.gpsFix === 'Locked' ? 'success' : 'warn'}
-              />
-              <ReadinessTile
-                icon={<Wifi size={15} strokeWidth={1.9} />}
-                label="Comms"
-                value={telemetry.gsmSignal}
-                tone={telemetry.gsmSignal === 'Strong' ? 'success' : 'warn'}
-              />
-              <ReadinessTile
-                icon={<Mic size={15} strokeWidth={1.9} />}
-                label="Audio"
-                value={telemetry.audioStatus}
-                tone="brand"
-              />
-            </div>
-          </GlassCard>
-
-          {/* ===== SOS — the paired wearable itself is the trigger ===== */}
           <GlassCard
             id="card-wearable-trigger"
-            className="animate-stagger"
-            style={{ ['--i' as string]: 2 } as React.CSSProperties}
+            flush
+            className="animate-stagger relative overflow-hidden p-0"
+            style={{ ['--i' as string]: 1 } as React.CSSProperties}
           >
-            <div className="flex items-center justify-between gap-3">
-              <p className="t-caption text-muted">Wearable connected</p>
-              <Badge tone="success" icon={<span className="h-1.5 w-1.5 rounded-full bg-success" />}>
-                {switchOn ? 'Alert sent' : 'Ready'}
-              </Badge>
-            </div>
+            <div className="p-4">
+              <div className="flex justify-center py-2">
+                <button
+                  id="btn-simulate-hardware-sos"
+                  type="button"
+                  onClick={handlePressSOS}
+                  aria-pressed={switchOn}
+                  aria-label="Send an emergency SOS to the Response Center"
+                  disabled={locating || switchOn}
+                  className={
+                    'press relative grid h-28 w-28 place-items-center overflow-hidden rounded-full text-white ' +
+                    'transition-[background-color,box-shadow,transform] duration-[160ms] ' +
+                    'disabled:cursor-wait disabled:opacity-70 ' +
+                    (switchOn
+                      ? 'bg-success'
+                      : 'bg-emergency shadow-emergency hover:bg-emergency-deep')
+                  }
+                >
+                  {!switchOn && !locating && (
+                    <span
+                      aria-hidden="true"
+                      className="sos-halo pointer-events-none absolute inset-0 rounded-full ring-2 ring-white/60"
+                    />
+                  )}
 
-            <button
-              id="btn-simulate-hardware-sos"
-              type="button"
-              onClick={handlePressSOS}
-              aria-pressed={switchOn}
-              aria-label="Squeeze the Bayani Alert wearable to send an emergency SOS"
-              disabled={locating || switchOn}
-              className="press mt-3 flex w-full flex-col items-center gap-3 rounded-card border border-[rgba(15,31,58,.06)] bg-[var(--surface-sunken)] px-4 py-5 disabled:cursor-wait disabled:opacity-55 dark:border-white/[.08]"
-            >
-              <img
-                src="/bayani.png"
-                alt="Bayani Alert emergency SOS wearable"
-                className="max-h-28 w-auto max-w-[15rem] select-none object-contain"
-                draggable="false"
-              />
-              <span className="t-heading text-center text-ink">
-                {switchOn
-                  ? 'Alert sent'
-                  : locating
-                    ? 'Getting your location…'
-                    : 'Squeeze to send SOS'}
-              </span>
-              <span className="t-body max-w-[18rem] text-center text-muted">
-                {switchOn
-                  ? 'Your location, contacts and ambient audio are with the Response Center.'
-                  : 'Squeeze your paired thigh band. Your location, contacts and ambient audio go to the Response Center.'}
-              </span>
-            </button>
+                  <span className="relative flex flex-col items-center gap-1">
+                    {locating && <Loader2 size={24} strokeWidth={2.4} className="animate-spin" />}
+                    {switchOn && <CheckCircle2 size={24} strokeWidth={2.4} />}
+                    {!locating && !switchOn && <Siren size={24} strokeWidth={2.3} />}
+                    <span className="t-display leading-none">
+                      {switchOn ? 'Sent' : locating ? 'Locating…' : 'SOS'}
+                    </span>
+                  </span>
+                </button>
+              </div>
+
+              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <ReadinessTile
+                  icon={<Radio size={15} strokeWidth={1.9} />}
+                  label="Device"
+                  value={telemetry.bleConnected ? 'Connected' : 'Offline'}
+                  tone={telemetry.bleConnected ? 'success' : 'danger'}
+                />
+                <ReadinessTile
+                  icon={<MapPin size={15} strokeWidth={1.9} />}
+                  label="GPS"
+                  value={telemetry.gpsFix}
+                  tone={telemetry.gpsFix === 'Locked' ? 'success' : 'warn'}
+                />
+                <ReadinessTile
+                  icon={<Wifi size={15} strokeWidth={1.9} />}
+                  label="Comms"
+                  value={telemetry.gsmSignal}
+                  tone={telemetry.gsmSignal === 'Strong' ? 'success' : 'warn'}
+                />
+                <ReadinessTile
+                  icon={<Mic size={15} strokeWidth={1.9} />}
+                  label="Audio"
+                  value={telemetry.audioStatus}
+                  tone="brand"
+                />
+              </div>
+            </div>
           </GlassCard>
 
           {/* GPS error (alert was NOT sent) */}
@@ -232,45 +237,45 @@ export const UserHomeScreen: React.FC<UserHomeScreenProps> = ({
             </div>
           )}
 
-          {/* Two shortcut cards */}
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            <GlassCardButton
-              id="card-home-trusted-circle"
-              onClick={() => onNavigateTab('contacts')}
-              className="animate-stagger"
-            >
-              <div className="flex items-center gap-3">
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-card bg-brand-50 text-brand-600">
-                  <Users size={20} strokeWidth={1.9} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="t-heading truncate text-ink">Trusted circle</p>
-                  <p className="t-body truncate text-muted">Who gets alerted with you</p>
-                </div>
-                <ChevronRight size={18} strokeWidth={1.9} className="shrink-0 text-muted" />
+          {/* ---- Recent alerts (real, from the backend) ---- */}
+          {recentIncidents.length > 0 && (
+            <GlassCard flush className="overflow-hidden p-0">
+              <div className="flex items-center justify-between gap-3 border-b border-[rgba(11,27,51,.06)] px-4 py-3 dark:border-white/[.08]">
+                <p className="t-caption text-muted">Recent alerts</p>
+                <p className="t-caption text-muted">
+                  {recentIncidents.length} of {incidents.length}
+                </p>
               </div>
-            </GlassCardButton>
-
-            <GlassCard
-              id="card-home-alert-history"
-              className="animate-stagger"
-              style={{ ['--i' as string]: 1 } as React.CSSProperties}
-            >
-              <div className="flex items-center gap-3">
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-card bg-brand-50 text-brand-600">
-                  <History size={20} strokeWidth={1.9} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="t-heading truncate text-ink">Alert history</p>
-                  <p className="t-body truncate text-muted">
-                    {activeIncident
-                      ? `Active · ${activeIncident.incidentCode}`
-                      : 'No alerts raised yet'}
-                  </p>
-                </div>
-              </div>
+              <ul>
+                {recentIncidents.map((inc, i) => (
+                  <li key={inc.id} style={{ ['--i' as string]: i } as React.CSSProperties}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenIncident?.(inc)}
+                      className={
+                        'press flex w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-[160ms] hover:bg-[var(--surface-sunken)] ' +
+                        (i === 0 ? '' : 'border-t border-[rgba(11,27,51,.05)] dark:border-white/[.06]')
+                      }
+                    >
+                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-ctl bg-brand-50 text-brand-600">
+                        <History size={16} strokeWidth={1.9} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-mono text-[13px] font-extrabold text-ink">
+                          {inc.incidentCode}
+                        </p>
+                        <p className="t-body truncate text-muted">
+                          {inc.date} · {inc.timeActivated}
+                        </p>
+                      </div>
+                      <Badge tone={statusTone(inc.status)}>{inc.status}</Badge>
+                      <ChevronRight size={16} strokeWidth={1.9} className="shrink-0 text-muted" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </GlassCard>
-          </div>
+          )}
 
           {/* Automatic location — no setup required; the override below is optional */}
           <GlassCard>
@@ -281,35 +286,38 @@ export const UserHomeScreen: React.FC<UserHomeScreenProps> = ({
               </div>
               {hardwareService.getLocationOverride() ? (
                 <Badge tone="brand">Fixed</Badge>
-              ) : autoLocating ? (
-                <Badge tone="neutral">Locating…</Badge>
-              ) : autoLocation?.source === 'gps' ? (
+              ) : autoFix ? (
                 <Badge tone="success" icon={<span className="h-1.5 w-1.5 rounded-full bg-success" />}>
                   GPS — live
                 </Badge>
-              ) : autoLocation ? (
-                <Badge tone="warning">Approx — IP</Badge>
+              ) : livePhase === 'locating' ? (
+                <Badge tone="neutral">Locating…</Badge>
+              ) : livePhase === 'denied' ? (
+                <Badge tone="warning">Permission needed</Badge>
               ) : (
                 <Badge tone="warning">Unavailable</Badge>
               )}
             </div>
 
             <div className="mt-3 rounded-ctl bg-[var(--surface-sunken)] px-3.5 py-3">
-              {autoLocating && !hardwareService.getLocationOverride() ? (
-                <p className="t-body text-muted">Finding where you are…</p>
+              {!autoFix && !hardwareService.getLocationOverride() && livePhase !== 'locating' ? (
+                <p className="t-body text-muted">Allow location access so alerts carry your position</p>
               ) : (
                 <>
                   <p className="text-[13px] font-extrabold text-ink">
                     {hardwareService.getLocationOverride()
                       ? (hardwareService.getLocationOverride()?.address ??
                         hardwareService.getLocationOverride()?.label)
-                      : autoLocation?.label || autoLocation?.city || telemetry.locationName || 'Location unavailable'}
+                      : autoPlace?.address ||
+                        autoPlace?.city ||
+                        telemetry.locationName ||
+                        (autoFix ? 'Current position' : 'Finding where you are…')}
                   </p>
                   <p className="t-caption mt-1 text-muted">
                     {hardwareService.getLocationOverride()
                       ? 'Manually fixed — clear it on the Map tab to go back to automatic'
-                      : autoLocation
-                        ? `${autoLocation.lat.toFixed(4)}° N, ${autoLocation.lng.toFixed(4)}° E · detected automatically`
+                      : autoFix
+                        ? `${autoFix.lat.toFixed(4)}° N, ${autoFix.lng.toFixed(4)}° E · ±${Math.round(autoFix.accuracy)} m · detected automatically`
                         : 'Allow location access so alerts carry your position'}
                   </p>
                 </>
@@ -375,17 +383,34 @@ export const UserHomeScreen: React.FC<UserHomeScreenProps> = ({
           {transmission && (
             <div
               role="status"
-              className={'flex items-center gap-2.5 rounded-card px-4 py-3 ' + TONE_CLS[transmission.tone]}
+              className={'relative overflow-hidden rounded-card px-4 py-3 ' + TONE_CLS[transmission.tone]}
             >
-              <span className="h-2 w-2 shrink-0 rounded-full bg-current" />
-              <span className="text-[13px] font-bold">{transmission.label}</span>
+              <div className="flex items-center gap-2.5">
+                <span className="h-2 w-2 shrink-0 rounded-full bg-current" />
+                <span className="text-[13px] font-bold">{transmission.label}</span>
+              </div>
+              {sending?.state === 'SENDING' && (
+                <span
+                  aria-hidden="true"
+                  className="animate-transmit-bar absolute inset-x-0 bottom-0 h-[3px] bg-current opacity-60"
+                />
+              )}
             </div>
           )}
 
           {/* Map card */}
           <GlassCard flush className="overflow-hidden p-0">
             <div className="relative h-[190px] w-full">
-              <LiveGoogleMap lat={mapLat} lng={mapLng} zoom={16} className="absolute inset-0" />
+              {mapHasCoords ? (
+                <LiveGoogleMap lat={mapLat} lng={mapLng} zoom={16} className="absolute inset-0" />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-6 text-center">
+                  <p className="text-[13px] font-bold text-ink">Waiting for your position</p>
+                  <p className="t-caption text-muted">
+                    The map will appear once your device reports a GPS fix.
+                  </p>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-3 px-4 py-3.5">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-ctl bg-success-soft text-success">
@@ -401,39 +426,9 @@ export const UserHomeScreen: React.FC<UserHomeScreenProps> = ({
             </div>
           </GlassCard>
 
-          {/* Status timeline */}
+          {/* Status timeline — real backend steps only */}
           <GlassCard>
-            <p className="t-caption text-muted">Status</p>
-            <ol className="mt-3 space-y-3.5">
-              {activeIncident.timeline.map((step) => {
-                const done = step.status === 'completed';
-                return (
-                  <li key={step.id} className="flex items-start gap-3">
-                    <span
-                      className={
-                        'mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full ' +
-                        (done ? 'bg-success text-white' : 'bg-[var(--surface-sunken)] text-muted')
-                      }
-                    >
-                      {done ? (
-                        <CheckCircle2 size={12} strokeWidth={3} />
-                      ) : (
-                        <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                      )}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className={'text-[13px] font-extrabold ' + (done ? 'text-ink' : 'text-muted')}>
-                        {step.title}
-                      </p>
-                      <p className="t-body text-muted">{step.description}</p>
-                    </div>
-                    {step.timestamp && (
-                      <span className="shrink-0 font-mono text-[10px] text-muted">{step.timestamp}</span>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
+            <Timeline steps={activeIncident.timeline} label="Status" />
           </GlassCard>
 
           {/* Assigned responder */}
@@ -536,6 +531,26 @@ export const UserHomeScreen: React.FC<UserHomeScreenProps> = ({
 };
 
 /* ------------------------------------------------------------------ */
+
+const statusTone = (status: string) => {
+  switch (status) {
+    case 'ACTIVE':
+    case 'PENDING':
+      return 'danger' as const;
+    case 'RESPONDING':
+    case 'RESPONDER EN ROUTE':
+    case 'ON SCENE':
+    case 'WAIT FOR ME':
+    case 'ON THE WAY':
+      return 'warning' as const;
+    case 'RESOLVED':
+      return 'success' as const;
+    case 'CANCELLED':
+      return 'neutral' as const;
+    default:
+      return 'brand' as const;
+  }
+};
 
 function ReadinessTile({
   icon,

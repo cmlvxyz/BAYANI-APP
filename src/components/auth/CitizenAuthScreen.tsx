@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Lock, User, LogIn, UserPlus, Eye, EyeOff, Mail, Calendar, AlertCircle, Loader2 } from 'lucide-react';
-import { computeAge } from '../../services/profileService';
+import { computeAge, loadCitizenProfile } from '../../services/profileService';
 import { KnownAccount } from '../../services/authClient';
 import { BrandLogo, Button, GlassCard, TextField, SelectField } from '../ui';
 
@@ -218,9 +218,9 @@ export default function CitizenAuthScreen({ onSaveProfile, onLogin, onCreateAcco
             (entering ? 'translate-y-3 opacity-0' : 'translate-y-0 opacity-100')
           }
         >
-          <BrandLogo className="h-20 w-20 select-none drop-shadow-[0_12px_24px_rgba(15,31,58,.26)]" />
+          <BrandLogo className="h-20 w-20 select-none drop-shadow-[0_12px_24px_rgba(11,27,51,.26)]" />
           <h1 className="mt-5 text-[24px] font-extrabold uppercase leading-none tracking-[.32em] text-ink">
-            Bayani
+            SINAG
           </h1>
           <p className="t-body mt-2.5 text-muted">Safety in every step</p>
         </header>
@@ -239,6 +239,7 @@ export default function CitizenAuthScreen({ onSaveProfile, onLogin, onCreateAcco
                 <div className="flex flex-wrap gap-2">
                   {knownAccounts.map((a) => {
                     const selected = quickUser === a.username;
+                    const avatar = loadCitizenProfile(a.username).avatar;
                     return (
                       <button
                         key={a.username}
@@ -249,11 +250,14 @@ export default function CitizenAuthScreen({ onSaveProfile, onLogin, onCreateAcco
                           'press flex items-center gap-1.5 rounded-full border py-1.5 pl-1.5 pr-3 text-[12px] font-bold transition-colors duration-[160ms] disabled:opacity-60 ' +
                           (selected
                             ? 'border-brand-600 bg-brand-50 text-brand-700'
-                            : 'border-[rgba(15,31,58,.10)] bg-[var(--surface)] text-muted hover:border-brand-200 dark:border-white/[.12]')
+                            : 'border-[rgba(11,27,51,.10)] bg-[var(--surface)] text-muted hover:border-brand-200 dark:border-white/[.12]')
                         }
                       >
-                        <span className="grid h-5 w-5 place-items-center rounded-full bg-brand-600 text-[10px] font-extrabold uppercase text-white">
-                          {a.username.charAt(0)}
+                        <span
+                          style={avatar ? { backgroundImage: `url("${avatar}")` } : undefined}
+                          className="grid h-5 w-5 shrink-0 place-items-center overflow-hidden rounded-full bg-brand-600 bg-cover bg-center text-[10px] font-extrabold uppercase text-white"
+                        >
+                          {avatar ? null : a.username.charAt(0)}
                         </span>
                         {a.username}
                       </button>
@@ -407,9 +411,9 @@ export default function CitizenAuthScreen({ onSaveProfile, onLogin, onCreateAcco
               </Button>
 
               <div className="flex items-center gap-3">
-                <span className="h-px flex-1 bg-[rgba(15,31,58,.08)] dark:bg-white/[.10]" />
+                <span className="h-px flex-1 bg-[rgba(11,27,51,.08)] dark:bg-white/[.10]" />
                 <span className="t-caption text-muted">or</span>
-                <span className="h-px flex-1 bg-[rgba(15,31,58,.08)] dark:bg-white/[.10]" />
+                <span className="h-px flex-1 bg-[rgba(11,27,51,.08)] dark:bg-white/[.10]" />
               </div>
 
               <div className="grid grid-cols-2 gap-3">

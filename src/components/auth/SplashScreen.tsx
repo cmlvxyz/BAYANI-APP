@@ -54,7 +54,7 @@ export default function SplashScreen({ onSelect }: Props) {
   };
 
   return (
-    <div className="app-bg relative fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden px-6">
+    <div className="app-bg fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden px-6">
       {/* Ambient brand blobs (static — no infinite animation outside the SOS halo) */}
       <span
         aria-hidden
@@ -73,7 +73,7 @@ export default function SplashScreen({ onSelect }: Props) {
             (phase === 'idle' ? 'scale-90 opacity-0' : 'scale-100 opacity-100')
           }
         >
-          <BrandLogo className="h-28 w-28 select-none drop-shadow-[0_14px_28px_rgba(15,31,58,.28)] sm:h-32 sm:w-32" />
+          <BrandLogo className="h-28 w-28 select-none drop-shadow-[0_14px_28px_rgba(11,27,51,.28)] sm:h-32 sm:w-32" />
         </div>
 
         {/* Wordmark */}
@@ -84,7 +84,7 @@ export default function SplashScreen({ onSelect }: Props) {
           }
         >
           <p className="text-[26px] font-extrabold uppercase leading-none tracking-[.34em] text-ink sm:text-[30px]">
-            Bayani
+            SINAG
           </p>
           <p className="t-body mt-3 max-w-[19rem] text-muted">
             Your silent shield. Always on.

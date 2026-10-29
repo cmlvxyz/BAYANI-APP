@@ -21,10 +21,12 @@ export function GlassCard({ className = '', style, interactive = false, flush = 
       id={id}
       style={style}
       className={
-        'bg-[var(--surface)] rounded-card border border-[rgba(15,31,58,.04)] shadow-soft ' +
+        'bg-[var(--surface)] rounded-card border border-[rgba(11,27,51,.04)] shadow-soft ' +
         'dark:border-white/[.07] ' +
         (flush ? '' : 'p-4 ') +
-        (interactive ? 'press cursor-pointer' : '') +
+        (interactive
+          ? 'press cursor-pointer transition-[box-shadow,border-color,transform] duration-[160ms] hover:shadow-lift hover:border-brand-200'
+          : '') +
         ' ' +
         className
       }
@@ -46,9 +48,9 @@ export function GlassCardButton({ className = '', children, ...rest }: GlassCard
       type="button"
       className={
         'w-full text-left bg-[var(--surface)] rounded-card p-4 shadow-soft ' +
-        'border border-[rgba(15,31,58,.04)] dark:border-white/[.07] ' +
+        'border border-[rgba(11,27,51,.04)] dark:border-white/[.07] ' +
         'press transition-[box-shadow,border-color] duration-[160ms] ' +
-        'hover:border-brand-200 ' +
+        'hover:border-brand-200 hover:shadow-lift ' +
         className
       }
       {...rest}

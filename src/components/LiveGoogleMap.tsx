@@ -1,5 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import 'leaflet/dist/leaflet.css';
+
+/**
+ * Street View coverage for the requested position.
+ *   exact   -> a panorama sits on (or within a few metres of) the fix
+ *   nearest -> the closest available panorama, which may be further away
+ *   none    -> no Street View imagery anywhere near the fix
+ */
+export type StreetViewCoverage = 'exact' | 'nearest' | 'none' | null;
 
 interface LiveGoogleMapProps {
   lat: number;
@@ -7,21 +16,36 @@ interface LiveGoogleMapProps {
   zoom?: number;
   streetView?: boolean;
   pano?: string;
-  heading?: number;
+  /** Device heading in degrees. Applied without re-running the panorama lookup. */
+  heading?: number | null;
   pitch?: number;
   className?: string;
+  /** Lets the parent surface the "Street View unavailable" fallback affordance. */
+  onCoverageChange?: (coverage: StreetViewCoverage) => void;
+  /** True when no Google Maps key is configured (embed fallback in use). */
+  onKeylessFallback?: () => void;
+  loadingLabel?: string;
+  emptyLabel?: string;
 }
-
-/** Neutral fallback center (Philippines) used only when no GPS/incident coordinates exist. */
-export const FALLBACK_COORDS = { lat: 12.8797, lng: 121.774 };
 
 /**
  * Google Maps JavaScript API key. Add it to the project-root `.env`:
  *   VITE_GOOGLE_MAPS_API_KEY=your-key-here
- * Without a key the component gracefully falls back to keyless embed iframes.
+ * Without a key we still show a real Street View panorama via the keyless
+ * embed, but the JS API features (nearest-panorama search, heading control and
+ * coverage detection) are unavailable.
  */
 const GOOGLE_MAPS_API_KEY: string | undefined =
-  (import.meta as any)?.env?.VITE_GOOGLE_MAPS_API_KEY || undefined;
+  import.meta.env.VITE_GOOGLE_MAPS_API_KEY || undefined;
+
+/** True when the JS API path is available. */
+export const hasGoogleMapsApiKey = (): boolean => Boolean(GOOGLE_MAPS_API_KEY);
+
+/** Radius, in meters, searched around the live fix for the nearest panorama. */
+const PANORAMA_SEARCH_RADIUS = 1000;
+
+/** A panorama this close to the fix counts as an exact match. */
+const EXACT_MATCH_METERS = 30;
 
 const SCRIPT_ID = 'bayani-google-maps-js';
 let googleMapsPromise: Promise<any> | null = null;
@@ -63,6 +87,19 @@ function loadGoogleMaps(apiKey: string): Promise<any> {
   return googleMapsPromise;
 }
 
+function distanceMeters(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.sin(dLng / 2) ** 2 * Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat));
+  return 2 * 6371008.8 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
 /** Keyless fallback: Google Maps / Street View embed iframes. */
 const EmbedMap: React.FC<LiveGoogleMapProps> = ({
   lat,
@@ -73,8 +110,8 @@ const EmbedMap: React.FC<LiveGoogleMapProps> = ({
   heading,
   pitch,
   className,
+  loadingLabel,
 }) => {
-  const frameCls = `w-full h-full border-0 ${className || ''}`;
   // The embed iframe reports no progress, so hold a skeleton until it fires
   // `load` (with a timeout so the panel can never get stuck behind it).
   const [loaded, setLoaded] = useState(false);
@@ -89,7 +126,7 @@ const EmbedMap: React.FC<LiveGoogleMapProps> = ({
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--surface-sunken)]">
       <div className="flex flex-col items-center gap-2.5">
         <Loader2 size={20} strokeWidth={2} className="animate-spin text-brand-600" />
-        <p className="t-caption text-muted">{streetView ? 'Loading Street View…' : 'Loading map…'}</p>
+        <p className="t-caption text-muted">{loadingLabel || (streetView ? 'Loading Street View…' : 'Loading map…')}</p>
       </div>
     </div>
   );
@@ -97,7 +134,7 @@ const EmbedMap: React.FC<LiveGoogleMapProps> = ({
   if (streetView) {
     const src = pano
       ? `https://www.google.com/maps?pano=${encodeURIComponent(pano)}&cbp=11,${heading ?? 0},${pitch ?? 0},0,0&output=svembed&hl=en`
-      : `https://www.google.com/maps?cbll=${lat},${lng}&cbp=11,0,0,0,0&output=svembed&hl=en`;
+      : `https://www.google.com/maps?cbll=${lat},${lng}&cbp=11,${heading ?? 0},${pitch ?? 0},0,0&output=svembed&hl=en`;
     // Hoisted out of the JSX: a nested template literal inside `key={...}` is
     // hard for the TS/JSX parser to track when other expressions wrap the element.
     const frameKey = pano ? `sv-pano-${pano}` : `sv-${lat},${lng}`;
@@ -107,7 +144,7 @@ const EmbedMap: React.FC<LiveGoogleMapProps> = ({
           key={frameKey}
           title="Google Street View"
           src={src}
-          className={frameCls}
+          className="w-full h-full border-0"
           loading="lazy"
           allowFullScreen
           referrerPolicy="no-referrer-when-downgrade"
@@ -125,7 +162,7 @@ const EmbedMap: React.FC<LiveGoogleMapProps> = ({
         key={frameKey}
         title="Google Maps"
         src={`https://maps.google.com/maps?q=${lat},${lng}&z=${zoom}&hl=en&ie=UTF8&iwloc=B&output=embed`}
-        className={frameCls}
+        className="w-full h-full border-0"
         loading="lazy"
         allowFullScreen
         referrerPolicy="no-referrer-when-downgrade"
@@ -136,22 +173,59 @@ const EmbedMap: React.FC<LiveGoogleMapProps> = ({
   );
 };
 
-type RenderMode = 'loading' | 'street' | 'map' | 'error';
-/** exact = pano at/near the coords, nearest = pano found within a wider radius, none = no coverage. */
-type Coverage = 'exact' | 'nearest' | 'none' | null;
+type RenderMode = 'loading' | 'street' | 'map' | 'empty' | 'error';
 
-/** Google Maps JS API implementation with Street View coverage detection. */
+/** Google Maps JS API implementation: one map + one panorama, updated in place. */
 const GoogleJsMap: React.FC<LiveGoogleMapProps> = (props) => {
-  const { lat, lng, zoom = 16, streetView = false, pano, heading = 0, pitch = 0, className } = props;
+  const {
+    lat,
+    lng,
+    zoom = 16,
+    streetView = false,
+    pano,
+    heading,
+    pitch = 0,
+    className,
+    onCoverageChange,
+    onKeylessFallback,
+    loadingLabel,
+    emptyLabel,
+  } = props;
 
   const hostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
+  const panoramaRef = useRef<any>(null);
   const [mode, setMode] = useState<RenderMode>('loading');
-  const [coverage, setCoverage] = useState<Coverage>(null);
+  const [coverage, setCoverage] = useState<StreetViewCoverage>(null);
+
+  // Callbacks held in refs so reporting coverage never re-triggers the lookup.
+  const coverageCbRef = useRef(onCoverageChange);
+  const keylessCbRef = useRef(onKeylessFallback);
+  useEffect(() => {
+    coverageCbRef.current = onCoverageChange;
+    keylessCbRef.current = onKeylessFallback;
+  }, [onCoverageChange, onKeylessFallback]);
+
+  const reportCoverage = (next: StreetViewCoverage) => {
+    setCoverage(next);
+    coverageCbRef.current?.(next);
+  };
+
+  // Headings arrive many times per second; apply them straight to the live
+  // panorama so we never re-run the (rate-limited) getPanorama lookup for them.
+  useEffect(() => {
+    const panorama = panoramaRef.current;
+    if (!panorama || mode !== 'street') return;
+    panorama.setPov({
+      heading: heading ?? panorama.getPov?.().heading ?? 0,
+      pitch: pitch ?? 0,
+    });
+  }, [heading, pitch, mode]);
 
   useEffect(() => {
     if (!GOOGLE_MAPS_API_KEY) {
       setMode('error');
+      keylessCbRef.current?.();
       return;
     }
 
@@ -183,83 +257,88 @@ const GoogleJsMap: React.FC<LiveGoogleMapProps> = (props) => {
           mapRef.current = map;
         } else {
           map.setCenter(center);
+          map.setZoom(zoom);
         }
-        map.setZoom(zoom);
 
         const panorama = map.getStreetView();
+        panoramaRef.current = panorama;
 
-        // Plain map mode — no Street View requested.
+        // Plain map mode - no Street View requested.
         if (!streetView) {
           panorama.setVisible(false);
-          setCoverage(null);
+          reportCoverage(null);
           setMode('map');
           return;
         }
 
-        let result: { data: any; status: string } = { data: null, status: 'ZERO_RESULTS' };
-        let level: Coverage = 'none';
+        let data: any = null;
+        let level: StreetViewCoverage = 'none';
 
-        // 1) Explicit panorama id (e.g. recorded with the citizen's exact location).
+        // 1) Explicit panorama id (recorded with the citizen's exact position).
         if (pano) {
-          result = await findPanorama(g, { pano });
-          if (result.status === 'OK' && result.data?.location?.pano) level = 'exact';
+          const explicit = await findPanorama(g, { pano });
+          if (explicit.status === 'OK' && explicit.data?.location?.pano) {
+            data = explicit.data;
+            level = 'exact';
+          }
         }
 
-        // 2) Tight radius around the incident coordinates.
-        if (level === 'none') {
-          result = await findPanorama(g, {
+        // 2) Nearest panorama to the live GPS fix.
+        if (!data) {
+          const nearest = await findPanorama(g, {
             location: center,
-            radius: 30,
+            radius: PANORAMA_SEARCH_RADIUS,
             preference: g.maps.StreetViewPreference?.NEAREST,
-            source: g.maps.StreetViewSource?.OUTDOOR,
+            source: g.maps.StreetViewSource?.GOOGLE,
           });
-          if (result.status === 'OK' && result.data?.location?.pano) level = 'exact';
-        }
-
-        // 3) Wider radius → nearest available panorama.
-        if (level === 'none') {
-          result = await findPanorama(g, {
-            location: center,
-            radius: 500,
-            preference: g.maps.StreetViewPreference?.NEAREST,
-            source: g.maps.StreetViewSource?.OUTDOOR,
-          });
-          if (result.status === 'OK' && result.data?.location?.pano) level = 'nearest';
+          if (nearest.status === 'OK' && nearest.data?.location?.pano) {
+            data = nearest.data;
+            const panoLatLng = nearest.data.location.latLng;
+            level =
+              panoLatLng && distanceMeters(center, panoLatLng) <= EXACT_MATCH_METERS
+                ? 'exact'
+                : 'nearest';
+          }
         }
 
         if (cancelled) return;
 
-        if (level === 'none') {
+        if (!data) {
           panorama.setVisible(false);
-          setCoverage('none');
-          setMode('map');
+          reportCoverage('none');
+          setMode('empty');
           return;
         }
 
-        const position = result.data.location.latLng;
+        const position = data.location.latLng;
         if (position) {
           map.setCenter(position);
           map.setZoom(zoom);
         }
-        panorama.setPano(result.data.location.pano);
+        panorama.setPano(data.location.pano);
         panorama.setPov({
-          heading: heading ?? result.data.location.pov?.heading ?? 0,
+          heading: heading ?? data.location.pov?.heading ?? 0,
           pitch: pitch ?? 0,
         });
         panorama.setVisible(true);
-        setCoverage(level);
+        reportCoverage(level);
         setMode('street');
       })
       .catch(() => {
-        if (!cancelled) setMode('error');
+        if (cancelled) return;
+        // API could not load at all - degrade to the keyless embed so the
+        // citizen still sees imagery instead of a blank panel.
+        setMode('error');
+        keylessCbRef.current?.();
       });
 
     return () => {
       cancelled = true;
     };
-  }, [lat, lng, zoom, streetView, pano, heading, pitch]);
+    // Intentionally excludes heading/pitch: they are applied by the effect above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lat, lng, zoom, streetView, pano]);
 
-  // If the API key is missing or the script failed, use the keyless embed fallback.
   if (mode === 'error') {
     return <EmbedMap {...props} />;
   }
@@ -272,8 +351,21 @@ const GoogleJsMap: React.FC<LiveGoogleMapProps> = (props) => {
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--surface-sunken)]">
           <div className="flex flex-col items-center gap-2.5">
             <Loader2 size={20} strokeWidth={2} className="animate-spin text-brand-600" />
-            <p className="t-caption text-muted">{streetView ? 'Loading Street View…' : 'Loading map…'}</p>
+            <p className="t-caption text-muted">{loadingLabel || (streetView ? 'Loading Street View…' : 'Loading map…')}</p>
           </div>
+        </div>
+      )}
+
+      {/* No Street View imagery anywhere near the fix. The parent decides
+          whether to offer the map fallback, so no world map sneaks in here. */}
+      {mode === 'empty' && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-[var(--surface-sunken)] px-6 text-center">
+          <p className="t-body-sm font-semibold text-ink">
+            {emptyLabel || 'Street View unavailable at this location'}
+          </p>
+          <p className="t-caption text-muted">
+            We could not find street-level imagery near your current position.
+          </p>
         </div>
       )}
 
@@ -281,16 +373,7 @@ const GoogleJsMap: React.FC<LiveGoogleMapProps> = (props) => {
       {mode === 'street' && coverage === 'nearest' && (
         <div className="pointer-events-none absolute inset-x-3 bottom-3 z-10 mx-auto max-w-[90%]">
           <p className="rounded-ctl bg-warn px-3 py-1.5 text-center text-[10px] font-extrabold uppercase tracking-[.06em] text-white shadow-lg">
-            Street View unavailable at exact location · showing nearest
-          </p>
-        </div>
-      )}
-
-      {/* No-coverage notice (map fallback) */}
-      {mode === 'map' && streetView && coverage === 'none' && (
-        <div className="pointer-events-none absolute inset-x-3 bottom-3 z-10 mx-auto max-w-[90%]">
-          <p className="rounded-ctl bg-[rgba(9,20,38,.92)] px-3 py-1.5 text-center text-[10px] font-extrabold uppercase tracking-[.06em] text-white shadow-lg">
-            No Street View here · showing map view
+            Showing the nearest Street View to your position
           </p>
         </div>
       )}
@@ -298,5 +381,14 @@ const GoogleJsMap: React.FC<LiveGoogleMapProps> = (props) => {
   );
 };
 
-export const LiveGoogleMap: React.FC<LiveGoogleMapProps> = (props) =>
-  GOOGLE_MAPS_API_KEY ? <GoogleJsMap {...props} /> : <EmbedMap {...props} />;
+export const LiveGoogleMap: React.FC<LiveGoogleMapProps> = (props) => {
+  const { onKeylessFallback } = props;
+
+  // When no API key is configured we never mount the JS path, so surface the
+  // degraded mode from here instead of from inside GoogleJsMap.
+  useEffect(() => {
+    if (!GOOGLE_MAPS_API_KEY) onKeylessFallback?.();
+  }, [onKeylessFallback]);
+
+  return GOOGLE_MAPS_API_KEY ? <GoogleJsMap {...props} /> : <EmbedMap {...props} />;
+};

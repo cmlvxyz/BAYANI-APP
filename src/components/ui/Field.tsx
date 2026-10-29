@@ -38,7 +38,7 @@ export function Field({ label, error, hint, className = '', children }: FieldShe
           'transition-[border-color,box-shadow] duration-[160ms] outline-none ' +
           (error
             ? 'border-danger focus:border-danger focus:shadow-[0_0_0_4px_var(--color-danger-soft)]'
-            : 'border-[rgba(15,31,58,.14)] dark:border-white/[.14] focus:border-brand-600 focus:shadow-[0_0_0_4px_var(--color-brand-50)]'),
+            : 'border-[rgba(11,27,51,.14)] dark:border-white/[.14] focus:border-brand-600 focus:shadow-[0_0_0_4px_var(--color-brand-50)]'),
       })}
       {error ? (
         <p id={msgId} role="alert" className="mt-1.5 text-[11px] font-semibold text-danger">

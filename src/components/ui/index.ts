@@ -11,4 +11,5 @@ export { Field, TextField, SelectField } from './Field';
 export { SegmentedControl } from './SegmentedControl';
 export type { SegmentOption } from './SegmentedControl';
 export { IconTile, EmptyState, ErrorState, Skeleton, SkeletonCard } from './states';
+export { Timeline } from './Timeline';
 export { BrandLogo } from './BrandLogo';

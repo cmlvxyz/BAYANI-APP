@@ -96,7 +96,7 @@ export const AudioEvidenceModal: React.FC<AudioEvidenceModalProps> = ({
             return (
               <li
                 key={item.id}
-                className="space-y-3 rounded-card border border-[rgba(15,31,58,.05)] bg-[var(--surface-sunken)] p-4 dark:border-white/[.08]"
+                className="space-y-3 rounded-card border border-[rgba(11,27,51,.05)] bg-[var(--surface-sunken)] p-4 dark:border-white/[.08]"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -113,7 +113,7 @@ export const AudioEvidenceModal: React.FC<AudioEvidenceModalProps> = ({
                 </div>
 
                 {/* Player */}
-                <div className="flex items-center gap-3 rounded-field border border-[rgba(15,31,58,.05)] bg-[var(--surface)] p-3 dark:border-white/[.08]">
+                <div className="flex items-center gap-3 rounded-field border border-[rgba(11,27,51,.05)] bg-[var(--surface)] p-3 dark:border-white/[.08]">
                   <button
                     type="button"
                     onClick={() => togglePlay(item.id)}
@@ -136,7 +136,7 @@ export const AudioEvidenceModal: React.FC<AudioEvidenceModalProps> = ({
                             'w-1 rounded-full transition-[transform,background-color] duration-[240ms] ' +
                             (isPlaying && i <= playbackSeconds % 15
                               ? 'scale-y-110 bg-brand-600'
-                              : 'bg-[rgba(15,31,58,.14)] dark:bg-white/20')
+                              : 'bg-[rgba(11,27,51,.14)] dark:bg-white/20')
                           }
                           style={{ height: `${h}px` }}
                         />
@@ -153,7 +153,7 @@ export const AudioEvidenceModal: React.FC<AudioEvidenceModalProps> = ({
                 </div>
 
                 {/* SHA-256 hash */}
-                <div className="flex items-center justify-between gap-2 rounded-ctl border border-[rgba(15,31,58,.05)] bg-[var(--surface)] px-3 py-2 dark:border-white/[.08]">
+                <div className="flex items-center justify-between gap-2 rounded-ctl border border-[rgba(11,27,51,.05)] bg-[var(--surface)] px-3 py-2 dark:border-white/[.08]">
                   <span className="flex min-w-0 items-center gap-1.5 font-mono text-[10px] text-muted">
                     <Lock size={12} strokeWidth={2} className="shrink-0" />
                     <span className="truncate">sha256:{item.sha256Hash}</span>

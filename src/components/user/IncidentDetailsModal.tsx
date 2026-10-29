@@ -1,7 +1,7 @@
 import React from 'react';
-import { Clock, MapPin, Mic, Shield, Users, CheckCircle2, FileText } from 'lucide-react';
+import { Clock, MapPin, Mic, Shield, Users, CheckCircle2 } from 'lucide-react';
 import { Incident } from '../../types';
-import { Badge, Button, Sheet, type BadgeTone } from '../ui';
+import { Badge, Button, Sheet, Timeline, type BadgeTone } from '../ui';
 
 interface IncidentDetailsModalProps {
   incident: Incident | null;
@@ -88,7 +88,7 @@ export const IncidentDetailsModal: React.FC<IncidentDetailsModalProps> = ({
             <MapPin size={16} strokeWidth={1.9} className="text-brand-600" />
             Incident location
           </p>
-          <div className="rounded-card border border-[rgba(15,31,58,.05)] p-3.5 dark:border-white/[.08]">
+          <div className="rounded-card border border-[rgba(11,27,51,.05)] p-3.5 dark:border-white/[.08]">
             <p className="text-[13px] font-extrabold text-ink">{incident.location.address}</p>
             <p className="t-body text-muted">
               {incident.location.barangay}, {incident.location.city}, {incident.location.country}
@@ -125,7 +125,7 @@ export const IncidentDetailsModal: React.FC<IncidentDetailsModalProps> = ({
 
         {/* Responder */}
         {incident.assignedResponder && (
-          <div className="rounded-card border border-[rgba(15,31,58,.05)] p-3.5 dark:border-white/[.08]">
+          <div className="rounded-card border border-[rgba(11,27,51,.05)] p-3.5 dark:border-white/[.08]">
             <p className="t-caption mb-2 text-muted">Assigned responder unit</p>
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -145,32 +145,7 @@ export const IncidentDetailsModal: React.FC<IncidentDetailsModalProps> = ({
             <Clock size={16} strokeWidth={1.9} className="text-muted" />
             Incident event timeline
           </p>
-          <ol className="space-y-3">
-            {incident.timeline.map((step, idx) => {
-              const done = step.status === 'completed';
-              return (
-                <li key={step.id || idx} className="flex items-start gap-3">
-                  <span
-                    className={
-                      'mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full ' +
-                      (done ? 'bg-success text-white' : 'bg-[var(--surface-sunken)] text-muted')
-                    }
-                  >
-                    {done ? <CheckCircle2 size={12} strokeWidth={3} /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-baseline justify-between gap-2">
-                      <p className={'text-[13px] font-extrabold ' + (done ? 'text-ink' : 'text-muted')}>
-                        {step.title}
-                      </p>
-                      <span className="shrink-0 font-mono text-[10px] text-muted">{step.timestamp}</span>
-                    </div>
-                    <p className="t-body text-muted">{step.description}</p>
-                  </div>
-                </li>
-              );
-            })}
-          </ol>
+          <Timeline steps={incident.timeline} />
         </div>
       </div>
     </Sheet>

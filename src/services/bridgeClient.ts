@@ -3,18 +3,24 @@
  *
  * - Pushes SOS incidents + manual resolve events to the Bridge (POST /event)
  * - Subscribes to the Response Center's live status updates (SSE /stream)
+ * - Subscribes to a SOS raised by this citizen's wearable device
+ *   (SSE type: hardware_sos) and displays it WITHOUT re-transmitting anything
  * - Reports bridge online/offline so the UI can show a connection pill
  */
 
 import { Incident } from '../types';
 import { getSession } from './authClient';
 
-// Bridge base URL — overridable via VITE_BRIDGE_URL (e.g. the laptop's LAN IP
-// when Bayani App runs on a phone and the Bridge runs on another machine).
-const BRIDGE_URL = (import.meta as any)?.env?.VITE_BRIDGE_URL || 'http://localhost:8000';
+// Bridge base URL — defaults to the same host as the page (port 8000), so it
+// works from other PCs on the LAN. Override via VITE_BRIDGE_URL if needed.
+const BRIDGE_URL =
+  import.meta.env.VITE_BRIDGE_URL ||
+  `${window.location.protocol}//${window.location.hostname}:8000`;
 
 export interface CitizenBridgeHandlers {
   onStatusUpdate?: (inc: Partial<Incident>) => void;
+  /** SOS raised by this citizen's registered wearable device. */
+  onHardwareSOS?: (inc: Incident) => void;
   onResolve?: (incidentCode: string) => void;
   onOnlineChange?: (online: boolean) => void;
   onSmsUpdate?: (payload: { id: string; incidentCode?: string; smsNotifications: any }) => void;
@@ -30,7 +36,11 @@ export function connectBridge(handlers: CitizenBridgeHandlers): () => void {
     }
   };
 
-  const es = new EventSource(`${BRIDGE_URL}/stream`);
+  const token = getSession()?.token || '';
+  // Pass the session token so the server can resolve this client as a citizen
+  // and deliver a wearable SOS for THIS account only (exact coordinates are
+  // never streamed to anyone else's browser).
+  const es = new EventSource(`${BRIDGE_URL}/stream${token ? `?token=${encodeURIComponent(token)}` : ''}`);
   es.onopen = () => setOnline(true);
   es.onerror = () => setOnline(false); // EventSource auto-reconnects
 
@@ -40,6 +50,10 @@ export function connectBridge(handlers: CitizenBridgeHandlers): () => void {
       if (!msg) return;
       if (msg.source === 'response' && msg.type === 'status_update' && handlers.onStatusUpdate) {
         handlers.onStatusUpdate(msg.payload);
+      } else if (msg.source === 'hardware' && msg.type === 'hardware_sos' && handlers.onHardwareSOS) {
+        // Already stored and dispatched by the backend — display only. The app
+        // must never call emitSOS()/transmitSos() for this incident.
+        handlers.onHardwareSOS(msg.payload);
       } else if (msg.source === 'response' && msg.type === 'resolve' && handlers.onResolve) {
         handlers.onResolve(msg.payload);
       } else if (msg.source === 'server' && msg.type === 'sms_update' && handlers.onSmsUpdate) {
@@ -121,6 +135,27 @@ export function emitAudioLive(incidentCode: string, audioUrl: string) {
     source: 'citizen',
     type: 'audio_live',
     payload: { incidentCode, audioUrl, ts: Date.now() },
+  });
+}
+
+/**
+ * Push a refreshed position for an SOS that was already sent. The SOS fires the
+ * instant the button is pressed (sometimes before the GPS has a fix); when the
+ * watcher then delivers real coordinates this is what finally puts the citizen
+ * on the Response Center's map.
+ */
+export function emitLocationUpdate(incident: Incident) {
+  if (!incident?.id || !incident.location) return;
+  post({
+    source: 'citizen',
+    type: 'location_update',
+    payload: {
+      id: incident.id,
+      incidentCode: incident.incidentCode,
+      userName: incident.userName,
+      location: incident.location,
+      gpsStatus: incident.gpsStatus,
+    },
   });
 }
 

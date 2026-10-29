@@ -52,7 +52,7 @@ export function EmptyState({
     <div
       className={
         'animate-rise-in flex flex-col items-center gap-3 rounded-card border border-dashed ' +
-        'border-[rgba(15,31,58,.12)] bg-[var(--surface)]/60 px-5 py-8 text-center ' +
+        'border-[rgba(11,27,51,.12)] bg-[var(--surface)]/60 px-5 py-8 text-center ' +
         'dark:border-white/[.12] ' +
         className
       }
@@ -118,7 +118,7 @@ export function Skeleton({ className = '' }: { className?: string }) {
   return (
     <span
       aria-hidden="true"
-      className={'animate-skeleton block rounded-ctl bg-[rgba(15,31,58,.09)] dark:bg-white/[.1] ' + className}
+      className={'animate-skeleton block rounded-ctl bg-[rgba(11,27,51,.09)] dark:bg-white/[.1] ' + className}
     />
   );
 }
@@ -128,7 +128,7 @@ export function SkeletonCard({ lines = 2, className = '' }: { lines?: number; cl
   return (
     <div
       className={
-        'space-y-3 rounded-card border border-[rgba(15,31,58,.04)] bg-[var(--surface)] p-4 ' +
+        'space-y-3 rounded-card border border-[rgba(11,27,51,.04)] bg-[var(--surface)] p-4 ' +
         'dark:border-white/[.07] ' +
         className
       }

@@ -69,7 +69,7 @@ export const UserNotificationsModal: React.FC<UserNotificationsModalProps> = ({
                 (notif.isEmergency
                   ? 'border-danger/25 bg-danger-soft'
                   : notif.isRead
-                    ? 'border-[rgba(15,31,58,.05)] bg-[var(--surface-sunken)] opacity-75'
+                    ? 'border-[rgba(11,27,51,.05)] bg-[var(--surface-sunken)] opacity-75'
                     : 'border-brand-200 bg-brand-50')
               }
             >

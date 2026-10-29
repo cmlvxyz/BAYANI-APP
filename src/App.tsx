@@ -29,10 +29,10 @@ import {
 import { GlassHeader, IconButton, BottomNavigation, BrandLogo, type NavTab } from './components/ui';
 
 // Services
-import { hardwareService, WearableDeviceTelemetry, BALANGA_LOCATION } from './services/hardwareService';
+import { hardwareService, WearableDeviceTelemetry } from './services/hardwareService';
 import { incidentService } from './services/incidentService';
 import { connectBridge, emitResolve, emitLogout, emitAudioLive, fetchIncidents } from './services/bridgeClient';
-import { loadCitizenProfile, saveCitizenProfile } from './services/profileService';
+import { loadCitizenProfile, saveCitizenProfile, adoptPendingProfile, subscribeProfile, CitizenProfile } from './services/profileService';
 import {
   login as citizenLogin,
   register as citizenRegister,
@@ -49,6 +49,7 @@ import CitizenAuthScreen, { AuthMode, CitizenProfileData } from './components/au
 import SplashScreen from './components/auth/SplashScreen';
 import { UserHomeScreen } from './components/user/UserHomeScreen';
 import { UserLiveLocationScreen } from './components/user/UserLiveLocationScreen';
+import { useLiveLocation } from './hooks/useLiveLocation';
 import { UserContactsScreen } from './components/user/UserContactsScreen';
 import { UserSettingsScreen } from './components/user/UserSettingsScreen';
 import { UserNotificationsModal } from './components/user/UserNotificationsModal';
@@ -69,6 +70,7 @@ export default function App() {
   // Telemetry & Incident State
   const [telemetry, setTelemetry] = useState<WearableDeviceTelemetry>(hardwareService.getTelemetry());
   const [activeIncident, setActiveIncident] = useState<Incident | null>(incidentService.getActiveIncident());
+  const [incidents, setIncidents] = useState<Incident[]>(incidentService.getIncidents());
   const [contacts, setContacts] = useState(incidentService.getContacts());
   const [notifications, setNotifications] = useState(incidentService.getNotifications());
   const [audioEvidence, setAudioEvidence] = useState(incidentService.getAudioEvidence());
@@ -85,10 +87,25 @@ export default function App() {
   const [knownAccounts, setKnownAccounts] = useState(getKnownAccounts);
   const [splashDone, setSplashDone] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('register');
+  // Current account's profile — drives the header avatar so a photo set in
+  // Settings/Profile shows up in the header immediately.
+  const [citizenProfile, setCitizenProfile] = useState<CitizenProfile>(() => loadCitizenProfile());
   // Exact-location acquisition state for the SOS flow.
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Single device GPS watcher for the whole app. It runs once the citizen is
+  // signed in and is on a screen that needs a position, so the Home card, the
+  // Live Location map and the emergency sharing all read the same real fix.
+  const liveLocation = useLiveLocation({ enabled: !!session && navTab !== 'contacts' });
+
+  // The SOS handler must read the latest fix without being re-created on every
+  // GPS tick, so mirror it into a ref.
+  const liveLocationRef = useRef(liveLocation);
+  useEffect(() => {
+    liveLocationRef.current = liveLocation;
+  }, [liveLocation]);
 
   const handleLogin = async (username: string, password: string) => {
     const s = await citizenLogin(username, password);
@@ -111,17 +128,25 @@ export default function App() {
   const handleCreateAccount = async (username: string, password: string) => {
     // Ang email na naka-register (Real Gmail sa Register form) ang isinesave bilang
     // account email — hindi ang placeholder na "username@bayani.app".
+    // Walang session pa dito, kaya ang pending registration draft ang binabasa.
     const profile = loadCitizenProfile();
     const email = profile.email?.trim() || undefined;
     await citizenRegister(username, password, email);
+    // I-tali ang na-register na profile sa bagong account na ito para hindi ito
+    // mag-share ng details sa ibang account na mag-sign in sa device.
+    try {
+      adoptPendingProfile(username);
+    } catch {
+      // Profile adoption is best-effort; it must never fail a successful registration.
+    }
   };
 
   const handleLogout = () => {
     const liveSession = getCitizenSession();
     if (liveSession?.user?.username) emitLogout(liveSession.user.username);
     citizenLogout();
-    setSplashDone(true); // skip the splash when logging out
-    setAuthMode('register'); // pagkatapos mag-logout, register form ang unang lalabas
+    setSplashDone(false); // ipakita ulit ang splash pagkatapos mag-logout
+    setAuthMode('register'); // pagkatapos ng splash, register form ang unang lalabas
     setSessionState(null);
   };
 
@@ -136,13 +161,25 @@ export default function App() {
     }
   }, [session]);
 
+  // Load the signed-in account's profile and follow any edits made in Settings
+  // or the Profile modal so the header avatar always matches.
+  useEffect(() => {
+    const sync = () => setCitizenProfile(loadCitizenProfile());
+    sync();
+    return subscribeProfile(sync);
+  }, [session?.token]);
+
   // Close the header menu on outside click / Escape
   useEffect(() => {
     if (!isMenuOpen) return;
     const onDocClick = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setIsMenuOpen(false);
-      }
+      const target = e.target as Node;
+      // The dropdown panel is rendered by GlassHeader, outside menuRef, so it
+      // must be excluded too — otherwise mousedown on a menu item (e.g. Log out)
+      // closes the menu before its click handler can fire.
+      const panel = document.getElementById('bayani-app-header-menu-panel');
+      if (menuRef.current?.contains(target) || panel?.contains(target)) return;
+      setIsMenuOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setIsMenuOpen(false);
@@ -158,7 +195,7 @@ export default function App() {
   // Browser tab title — shows the current section at the top when navigating
   useEffect(() => {
     const active = BOTTOM_NAV.find((i) => i.key === navTab);
-    document.title = active ? `${active.label} | Bayani App` : 'Bayani App';
+    document.title = active ? `${active.label} | SINAG` : 'SINAG';
   }, [navTab]);
 
   // Subscribe to hardware & incident state changes
@@ -169,20 +206,36 @@ export default function App() {
 
     const unsubInc = incidentService.subscribe(() => {
       setActiveIncident(incidentService.getActiveIncident());
+      setIncidents(incidentService.getIncidents());
       setContacts(incidentService.getContacts());
       setNotifications(incidentService.getNotifications());
       setAudioEvidence(incidentService.getAudioEvidence());
     });
 
+    return () => {
+      unsubHw();
+      unsubInc();
+    };
+  }, []);
+
+  // The live stream identifies this citizen with their session token, so it must
+  // (re)connect whenever the session changes — otherwise a stream opened before
+  // login stays anonymous and misses their own wearable SOS / status updates.
+  useEffect(() => {
     const unsubBridge = connectBridge({
       onStatusUpdate: (inc) => {
         if (inc.status === 'WAIT FOR ME') {
-          const uname = (getCitizenSession()?.user?.username || 'BAYANI').toUpperCase();
+          const uname = (getCitizenSession()?.user?.username || 'SINAG').toUpperCase();
           setStatusToast(`${uname} ${inc.status}!`);
         } else if (inc.status === 'ON THE WAY') {
-          setStatusToast('BAYANI IS ON THE WAY!');
+          setStatusToast('SINAG IS ON THE WAY!');
         }
         if (inc.id) incidentService.applyIncomingStatus(inc.id, inc.status!, inc.assignedResponder);
+      },
+      // A SOS raised by this citizen's wearable device. It is already stored on
+      // the server, so it is displayed only — never re-transmitted from here.
+      onHardwareSOS: (inc) => {
+        incidentService.receiveHardwareIncident(inc);
       },
       onResolve: (code) => {
         incidentService.resolveFromBridge(code);
@@ -194,11 +247,9 @@ export default function App() {
     });
 
     return () => {
-      unsubHw();
-      unsubInc();
       unsubBridge();
     };
-  }, []);
+  }, [session?.token]);
 
   // Reload contacts from the backend database whenever the server connection is
   // restored, and auto-retry any SOS still waiting in the offline queue.
@@ -226,7 +277,7 @@ export default function App() {
     };
   }, []);
 
-  // Auto-dismiss the responder status toast ("BAYANI IS ON THE WAY!") after a few seconds.
+  // Auto-dismiss the responder status toast ("SINAG IS ON THE WAY!") after a few seconds.
   useEffect(() => {
     if (!statusToast) return;
     const t = window.setTimeout(() => setStatusToast(null), 4000);
@@ -244,6 +295,35 @@ export default function App() {
     const id = window.setInterval(() => emitAudioLive(inc.incidentCode, audioUrl), 3000);
     return () => window.clearInterval(id);
   }, [activeIncident?.id, activeIncident?.status]);
+
+  // Keep an open emergency pinned to the citizen's real device position. The
+  // watcher only reports once the citizen has moved ~25m, so this stays cheap
+  // and does not hammer the sharing backend.
+  useEffect(() => {
+    const fix = liveLocation.fix;
+    const inc = activeIncident;
+    if (!fix || !inc) return;
+    if (inc.status === 'RESOLVED' || inc.status === 'CANCELLED') return;
+    // A wearable SOS keeps the coordinates its device transmitted: that device
+    // is the authority on where the emergency is, and this phone's position
+    // could belong to someone else entirely.
+    if (inc.source === 'HARDWARE') return;
+
+    // The citizen's verified address is the human-readable label responders
+    // act on; the coordinates always remain the live device fix.
+    const verified = loadCitizenProfile().address.trim();
+
+    incidentService.updateActiveEmergencyLocation({
+      lat: fix.lat,
+      lng: fix.lng,
+      address: verified || liveLocation.place?.address,
+      barangay: liveLocation.place?.region,
+      city: liveLocation.place?.city,
+      accuracy: fix.accuracy,
+      gpsTimestamp: new Date(fix.timestamp).toISOString(),
+      source: 'gps',
+    });
+  }, [liveLocation.fix, liveLocation.place, activeIncident?.id]);
 
   // Emergency Alarm Handler — fires the alert INSTANTLY. No "getting location"
 // loading state: the incident goes out right away with the best known position.
@@ -299,7 +379,27 @@ export default function App() {
       return;
     }
 
-    // 2) The wearable's current known coordinates — fire immediately.
+    // 2) The live device fix from the shared GPS watcher — fire immediately.
+    const fix = liveLocationRef.current.fix;
+    if (fix) {
+      const place = liveLocationRef.current.place;
+      const verified = loadCitizenProfile().address.trim();
+      const label = verified || place?.address;
+      publishWith({
+        lat: fix.lat,
+        lng: fix.lng,
+        label,
+        address: label,
+        city: place?.city,
+        region: place?.region,
+        accuracy: fix.accuracy,
+        gpsTimestamp: new Date(fix.timestamp).toISOString(),
+        source: 'gps',
+      });
+      return;
+    }
+
+    // 3) The wearable's last known coordinates.
     const tel = hardwareService.getTelemetry();
     if (tel && (tel.latitude !== 0 || tel.longitude !== 0)) {
       publishWith({
@@ -316,19 +416,17 @@ export default function App() {
       return;
     }
 
-    // 3) No coordinate yet — use the demo location so the alarm still goes
-    // out instantly (never blocked on a slow GPS fix).
-    publishWith({
-      lat: BALANGA_LOCATION.lat,
-      lng: BALANGA_LOCATION.lng,
-      label: BALANGA_LOCATION.label,
-      address: BALANGA_LOCATION.address,
-      city: BALANGA_LOCATION.city,
-      region: BALANGA_LOCATION.barangay,
-      accuracy: 0,
-      gpsTimestamp: new Date().toISOString(),
-      source: 'override',
-    });
+    // 4) No position yet — still send the alarm instantly (the alert must never
+    // be blocked on a slow GPS fix) but attach no invented coordinates. The
+    // watcher effect below attaches the real fix as soon as it arrives.
+    hardwareService.simulateHardwareSOS();
+    const created = incidentService.getActiveIncident();
+    if (created) {
+      void incidentService.transmitSos().then((ok) => {
+        if (!ok) setStatusToast('OFFLINE — SOS SAVED. WILL AUTO-RETRY.');
+      });
+    }
+    setStatusToast('SENT — ACQUIRING YOUR GPS POSITION…');
   };
 
   const handleResetToSafe = () => {
@@ -357,9 +455,14 @@ export default function App() {
             onSimulateHardwareSOS={handleSimulateHardwareSOS}
             onConfirmHelped={handleResetToSafe}
             onNavigateTab={goCitizen}
+            onOpenIncident={setInspectingIncident}
             stealthMode={telemetry.stealthMode}
             locating={locating}
             locationError={locationError}
+            liveLocation={liveLocation}
+            bridgeOnline={bridgeOnline}
+            contacts={contacts}
+            incidents={incidents}
           />
         );
       case 'map':
@@ -368,6 +471,7 @@ export default function App() {
             telemetry={telemetry}
             activeIncident={activeIncident}
             isEmergencyActive={isEmergencyActive}
+            liveLocation={liveLocation}
           />
         );
       case 'contacts':
@@ -420,33 +524,31 @@ export default function App() {
       {/* ===== FLOATING GLASS HEADER ===== */}
       <GlassHeader
         id="bayani-app-header"
-        title="BAYANI"
+        title="SINAG"
         subtitle="Safety in Every Step"
         leading={
           <BrandLogo className="h-8 w-8 shrink-0 object-contain" />
         }
         actions={
           <>
-            <IconButton
-              label="Open notifications"
-              dot={unreadCount > 0}
-              onClick={() => setIsNotificationsOpen(true)}
-            >
-              <Bell size={19} strokeWidth={1.9} />
-            </IconButton>
-
             <button
               type="button"
               onClick={() => setIsProfileOpen(true)}
               aria-label="Open profile"
-              className="press grid h-10 w-10 shrink-0 place-items-center rounded-full bg-brand-600 text-[13px] font-extrabold text-white transition-colors duration-[160ms] hover:bg-brand-700 after:absolute after:-inset-1 after:content-['']"
+              style={
+                citizenProfile.avatar
+                  ? { backgroundImage: `url("${citizenProfile.avatar}")` }
+                  : undefined
+              }
+              className="press relative grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-brand-600 bg-cover bg-center text-[11px] font-extrabold text-white transition-colors duration-[160ms] hover:bg-brand-700 after:absolute after:-inset-1 after:content-['']"
             >
-              {session.user.username.charAt(0).toUpperCase()}
+              {citizenProfile.avatar ? null : session.user.username.charAt(0).toUpperCase()}
             </button>
 
             <div className="relative" ref={menuRef}>
               <IconButton
                 label="Open menu"
+                badge={unreadCount}
                 expanded={isMenuOpen}
                 controls="bayani-app-header-menu-panel"
                 onClick={() => setIsMenuOpen((v) => !v)}
@@ -474,8 +576,15 @@ export default function App() {
               >
                 {/* Session identity */}
                 <div className="flex items-center gap-2.5 rounded-card bg-brand-50 px-3 py-2.5">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-600 text-[12px] font-extrabold text-white">
-                    {session.user.username.charAt(0).toUpperCase()}
+                  <span
+                    style={
+                      citizenProfile.avatar
+                        ? { backgroundImage: `url("${citizenProfile.avatar}")` }
+                        : undefined
+                    }
+                    className="grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full bg-brand-600 bg-cover bg-center text-[12px] font-extrabold text-white"
+                  >
+                    {citizenProfile.avatar ? null : session.user.username.charAt(0).toUpperCase()}
                   </span>
                   <div className="min-w-0">
                     <span className="block truncate text-[12px] font-extrabold text-ink">
@@ -487,41 +596,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* SOS status */}
-                <button
-                  type="button"
-                  onClick={() => setIsMenuOpen(false)}
-                  role="menuitem"
-                  className="press mt-1.5 flex w-full items-center gap-2.5 rounded-ctl px-3 py-2.5 text-left transition-colors duration-[160ms] hover:bg-[var(--surface-sunken)]"
-                >
-                  <span
-                    className={`h-2 w-2 shrink-0 rounded-full ${isEmergencyActive ? 'bg-danger' : 'bg-success'}`}
-                  />
-                  <span
-                    className={`t-caption ${isEmergencyActive ? 'text-danger' : 'text-success'}`}
-                  >
-                    {isEmergencyActive ? 'SOS Active' : 'Protection Armed'}
-                  </span>
-                </button>
-
-                {/* Bridge status */}
-                <button
-                  type="button"
-                  onClick={() => setIsMenuOpen(false)}
-                  role="menuitem"
-                  title={
-                    bridgeOnline
-                      ? 'Connected to Response Center (port 4000)'
-                      : 'Bridge offline — start bridge-server.mjs'
-                  }
-                  className="press flex w-full items-center gap-2.5 rounded-ctl px-3 py-2.5 text-left transition-colors duration-[160ms] hover:bg-[var(--surface-sunken)]"
-                >
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${bridgeOnline ? 'bg-brand-500' : 'bg-warn'}`} />
-                  <span className={`t-caption ${bridgeOnline ? 'text-brand-600' : 'text-warn'}`}>
-                    {bridgeOnline ? 'Bridge Link' : 'Bridge Off'}
-                  </span>
-                </button>
-
                 {/* Notifications */}
                 <button
                   type="button"
@@ -530,7 +604,7 @@ export default function App() {
                     setIsNotificationsOpen(true);
                   }}
                   role="menuitem"
-                  className="press flex w-full items-center gap-2.5 rounded-ctl px-3 py-2.5 text-left transition-colors duration-[160ms] hover:bg-[var(--surface-sunken)]"
+                  className="press mt-1.5 flex w-full items-center gap-2.5 rounded-ctl px-3 py-2.5 text-left transition-colors duration-[160ms] hover:bg-[var(--surface-sunken)]"
                 >
                   <Bell size={16} strokeWidth={1.9} className="shrink-0 text-muted" />
                   <span className="t-caption text-muted">Notifications</span>

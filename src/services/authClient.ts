@@ -15,7 +15,9 @@ export interface AuthSession {
   user: AuthUser;
 }
 
-const API_URL = (import.meta as any)?.env?.VITE_BRIDGE_URL || 'http://localhost:8000';
+const API_URL =
+  import.meta.env.VITE_BRIDGE_URL ||
+  `${window.location.protocol}//${window.location.hostname}:8000`;
 const STORAGE_KEY = 'bayani_citizen_session';
 const KNOWN_STORAGE_KEY = 'bayani_known_accounts';
 
@@ -54,7 +56,7 @@ export async function register(username: string, password: string, email?: strin
       body: JSON.stringify({ username, password, email }),
     });
   } catch {
-    throw new Error(`Cannot reach the server at ${API_URL}. Start the backend (Bayani start.bat).`);
+    throw new Error(`Cannot reach the server at ${API_URL}. Start the backend (run start-bayani.bat).`);
   }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data?.error || 'Registration failed');
@@ -69,7 +71,7 @@ export async function login(username: string, password: string): Promise<AuthSes
       body: JSON.stringify({ username, password }),
     });
   } catch {
-    throw new Error(`Cannot reach the server at ${API_URL}. Start the backend (Bayani start.bat).`);
+    throw new Error(`Cannot reach the server at ${API_URL}. Start the backend (run start-bayani.bat).`);
   }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data?.error || 'Login failed');

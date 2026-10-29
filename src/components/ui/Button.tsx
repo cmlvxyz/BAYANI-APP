@@ -29,11 +29,11 @@ export type LinkButtonProps = CommonProps &
 
 const VARIANT: Record<Variant, string> = {
   primary:
-    'bg-brand-600 text-white shadow-[0_6px_18px_-8px_rgba(31,99,224,.75)] hover:bg-brand-700',
+    'bg-brand-600 text-white shadow-[0_6px_18px_-8px_rgba(11,27,51,.7)] hover:bg-brand-700',
   secondary: 'bg-brand-50 text-brand-700 border border-brand-100 hover:bg-brand-100',
   outline: 'bg-transparent text-brand-700 border-[1.5px] border-brand-600 hover:bg-brand-50',
   ghost: 'bg-transparent text-muted hover:bg-[var(--surface-sunken)] hover:text-ink',
-  danger: 'bg-danger text-white shadow-[0_6px_18px_-8px_rgba(220,38,38,.7)] hover:brightness-95',
+  danger: 'bg-danger text-white shadow-[0_6px_18px_-8px_rgba(224,39,28,.7)] hover:brightness-95',
 };
 
 const SIZE: Record<Size, string> = {

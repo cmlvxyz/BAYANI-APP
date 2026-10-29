@@ -44,14 +44,15 @@ export const UserSettingsScreen: React.FC<UserSettingsScreenProps> = ({
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [profile, setProfile] = useState<CitizenProfile>(loadCitizenProfile);
   const [isEditing, setIsEditing] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   // Configurable privacy-contact placeholder (set via VITE_PRIVACY_CONTACT, or
   // the LGU's DPO contact once assigned). Never hardcoded personnel.
   const privacyContact =
-    (import.meta as any)?.env?.VITE_PRIVACY_CONTACT || 'privacy.operations at the city hall of Balanga (to be configured)';
+    import.meta.env.VITE_PRIVACY_CONTACT || 'privacy.operations at the city hall of Balanga (to be configured)';
   const privacyOfficer =
-    (import.meta as any)?.env?.VITE_PRIVACY_OFFICER || 'LGU Data Protection Officer (to be appointed by the LGU)';
+    import.meta.env.VITE_PRIVACY_OFFICER || 'LGU Data Protection Officer (to be appointed by the LGU)';
 
   const updateProfile = (patch: Partial<CitizenProfile>) => {
     setProfile((prev) => ({ ...prev, ...patch }));
@@ -68,14 +69,25 @@ export const UserSettingsScreen: React.FC<UserSettingsScreenProps> = ({
   };
 
   const readOnlyField =
-    'w-full min-h-[44px] rounded-field border-[1.5px] border-[rgba(15,31,58,.06)] bg-[var(--surface-sunken)] px-3.5 py-2.5 text-[13px] text-muted cursor-default dark:border-white/[.06]';
+    'w-full min-h-[44px] rounded-field border-[1.5px] border-[rgba(11,27,51,.06)] bg-[var(--surface-sunken)] px-3.5 py-2.5 text-[13px] text-muted cursor-default dark:border-white/[.06]';
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const dataUrl = await readAvatarFile(file);
-    updateProfile({ avatar: dataUrl });
-    e.target.value = '';
+    setSaveError(null);
+    try {
+      const dataUrl = await readAvatarFile(file);
+      // Persist right away so the header avatar updates even outside edit mode.
+      const next = { ...profile, avatar: dataUrl };
+      setProfile(next);
+      if (!saveCitizenProfile(next)) {
+        setSaveError('Could not save the photo on this device — storage is full.');
+      }
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not load this image.');
+    } finally {
+      e.target.value = '';
+    }
   };
 
   return (
@@ -91,11 +103,14 @@ export const UserSettingsScreen: React.FC<UserSettingsScreenProps> = ({
             type="button"
             onClick={() => avatarInputRef.current?.click()}
             aria-label="Change profile picture"
-            className="press group relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-card bg-brand-600 text-[17px] font-extrabold text-white"
+            style={
+              profile.avatar
+                ? { backgroundImage: `url("${profile.avatar}")` }
+                : undefined
+            }
+            className="press group relative grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-full bg-brand-600 bg-cover bg-center text-[17px] font-extrabold text-white"
           >
-            {profile.avatar ? (
-              <img src={profile.avatar} alt="" className="h-full w-full object-cover" />
-            ) : (
+            {profile.avatar ? null : (
               <span>{(profile.fullName || 'Protected Citizen').charAt(0).toUpperCase()}</span>
             )}
             <span className="absolute inset-0 grid place-items-center bg-black/45 opacity-0 transition-opacity duration-[160ms] group-hover:opacity-100">
@@ -117,6 +132,14 @@ export const UserSettingsScreen: React.FC<UserSettingsScreenProps> = ({
           </div>
           <Badge tone="success">Protected</Badge>
         </div>
+        {saveError && (
+          <p
+            role="alert"
+            className="mt-3 rounded-field border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-[12px] font-bold text-danger"
+          >
+            {saveError}
+          </p>
+        )}
       </GlassCard>
 
       {/* Profile details */}
@@ -189,7 +212,7 @@ export const UserSettingsScreen: React.FC<UserSettingsScreenProps> = ({
           </div>
         </div>
 
-        <div className="mt-4 border-t border-[rgba(15,31,58,.06)] pt-4 dark:border-white/[.08]">
+        <div className="mt-4 border-t border-[rgba(11,27,51,.06)] pt-4 dark:border-white/[.08]">
           {isEditing ? (
             <Button variant="primary" fullWidth icon={<Check size={16} strokeWidth={2.2} />} onClick={handleSaveProfile}>
               Save changes
@@ -250,7 +273,7 @@ export const UserSettingsScreen: React.FC<UserSettingsScreenProps> = ({
         />
         <NavRow
           icon={<Info size={16} strokeWidth={1.9} />}
-          title="About Bayani App"
+          title="About SINAG"
           description="What this app does for you"
           onClick={() => setShowAboutModal(true)}
           last
@@ -272,7 +295,7 @@ export const UserSettingsScreen: React.FC<UserSettingsScreenProps> = ({
       >
         <div className="space-y-4 text-muted">
           <p className="t-body">
-            This notice describes how the BAYANI system handles personal data during an
+            This notice describes how the SINAG system handles personal data during an
             emergency. It follows the baseline principles of the Philippines Data Privacy Act
             of 2012 for this demo.
           </p>
@@ -310,7 +333,7 @@ export const UserSettingsScreen: React.FC<UserSettingsScreenProps> = ({
         id="about-sheet"
         isOpen={showAboutModal}
         onClose={() => setShowAboutModal(false)}
-        title="About Bayani App"
+        title="About SINAG"
         size="lg"
         footer={
           <Button variant="primary" fullWidth onClick={() => setShowAboutModal(false)}>
@@ -320,8 +343,8 @@ export const UserSettingsScreen: React.FC<UserSettingsScreenProps> = ({
       >
         <div className="space-y-4 text-muted">
           <p className="t-body text-ink">
-            <strong>Bayani App</strong> (&ldquo;Safety in Every Step&rdquo;) is the citizen-side
-            smart companion app of the Bayani safety system. It pairs with a discreet physical
+            <strong>SINAG</strong> (&ldquo;Safety in Every Step&rdquo;) is the citizen-side
+            smart companion app of the SINAG safety system. It pairs with a discreet physical
             thigh-worn wearable so you can call for help &mdash; without ever reaching for your
             phone.
           </p>
@@ -408,7 +431,7 @@ function NavRow({
       className={
         'press flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left ' +
         'transition-colors duration-[160ms] hover:bg-[var(--surface-sunken)] ' +
-        (last ? '' : 'border-b border-[rgba(15,31,58,.06)] dark:border-white/[.08]')
+        (last ? '' : 'border-b border-[rgba(11,27,51,.06)] dark:border-white/[.08]')
       }
     >
       <div className="flex min-w-0 items-center gap-3">
@@ -441,7 +464,7 @@ export function Switch({
       onClick={() => onChange(!checked)}
       className={
         'track relative h-6 w-11 shrink-0 rounded-full ' +
-        (checked ? 'bg-brand-600' : 'bg-[rgba(15,31,58,.2)] dark:bg-white/20')
+        (checked ? 'bg-brand-600' : 'bg-[rgba(11,27,51,.2)] dark:bg-white/20')
       }
     >
       <span

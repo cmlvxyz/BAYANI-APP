@@ -164,7 +164,7 @@ export const UserIncidentsScreen: React.FC<UserIncidentsScreenProps> = ({
                     </span>
                   </p>
 
-                  <p className="t-caption mt-3 flex items-center gap-1.5 border-t border-[rgba(15,31,58,.06)] pt-3 text-muted dark:border-white/[.08]">
+                  <p className="t-caption mt-3 flex items-center gap-1.5 border-t border-[rgba(11,27,51,.06)] pt-3 text-muted dark:border-white/[.08]">
                     <Clock size={13} strokeWidth={1.9} />
                     {incident.date} · {incident.timeActivated}
                   </p>

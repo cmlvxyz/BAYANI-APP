@@ -44,7 +44,7 @@ export function SegmentedControl<T extends string>({
               'press min-h-[38px] flex-1 rounded-field px-2 text-[12px] leading-tight font-bold ' +
               'transition-colors duration-[160ms] ' +
               (active
-                ? 'bg-[var(--surface)] text-brand-700 shadow-[0_1px_2px_rgba(15,31,58,.06)]'
+                ? 'bg-[var(--surface)] text-brand-700 shadow-[0_1px_2px_rgba(11,27,51,.06)]'
                 : 'text-muted hover:text-ink')
             }
           >

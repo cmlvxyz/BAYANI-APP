@@ -9,13 +9,13 @@ export const BrandLogo = ({ className }: { className?: string }) => {
   const [failed, setFailed] = useState(false);
 
   if (failed) {
-    return <img src="/logo.svg" alt="Bayani" className={`${className ?? ''} object-contain`} />;
+    return <img src="/logo.svg" alt="SINAG" className={`${className ?? ''} object-contain`} />;
   }
 
   return (
     <img
       src="/bayani-logo.png"
-      alt="Bayani"
+      alt="SINAG"
       className={`${className ?? ''} object-contain`}
       onError={() => setFailed(true)}
     />

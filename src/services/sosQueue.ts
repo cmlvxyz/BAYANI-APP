@@ -121,7 +121,8 @@ export async function listPendingSos(): Promise<PendingSosEntry[]> {
   if (dbAvailable()) {
     try {
       const all = await tx<unknown[]>('readonly', (s) => s.getAll());
-      return (Array.isArray(all) ? all : []).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const entries = (Array.isArray(all) ? all : []) as PendingSosEntry[];
+      return entries.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
     } catch {
       // fall through
     }

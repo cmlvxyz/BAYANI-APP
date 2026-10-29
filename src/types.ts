@@ -100,6 +100,8 @@ export interface Incident {
   notes?: string;
   /** Where this alert was fired from (the app button, or a paired wearable). */
   source?: IncidentSource;
+  /** Present when a registered wearable device raised the alert. */
+  device?: IncidentDeviceInfo;
   /** Client-generated idempotency key — lets a retried SOS never double-post. */
   requestId?: string;
   /** Live, honest transmission state of the SOS towards the response center. */
@@ -188,3 +190,55 @@ export interface ResponderAgent {
 
 export type UserNavTab = 'home' | 'map' | 'contacts' | 'settings';
 export type ResponderNavTab = 'dashboard' | 'incidents' | 'map' | 'responders' | 'contacts' | 'reports' | 'settings';
+
+// ------------------------------------------------------- hardware (wearable)
+
+/** Device-reported health, attached to a hardware incident. */
+export interface IncidentDeviceInfo {
+  deviceId: string;
+  label?: string;
+  deviceType?: string;
+  /** Battery percentage (0-100). */
+  battery?: number;
+  /** Raw cellular signal: 0-31 (network order) or a human label. */
+  gsmSignal?: number | string;
+  gpsFix?: string;
+  accuracy?: number;
+}
+
+/**
+ * Body of `POST /device/sos` as sent by the wearable firmware over HTTPS.
+ * Authenticated with an `X-Device-Key` header whose value lives ONLY on the
+ * server and the device — this app never sends it. Documented in
+ * docs/HARDWARE_INTEGRATION.md.
+ */
+export interface DeviceSosRequest {
+  deviceId: string;
+  event: 'SOS';
+  latitude: number;
+  longitude: number;
+  /** ISO-8601 timestamp of the GPS fix. */
+  timestamp: string;
+  accuracy?: number;
+  battery?: number;
+  gsmSignal?: number | string;
+  gpsFix?: string;
+  /** Stable id for one physical press; makes a retry idempotent. */
+  eventId?: string;
+}
+
+/** Successful `POST /device/sos` reply. */
+export interface DeviceSosResponse {
+  ok: true;
+  incidentId: string;
+  incidentCode: string;
+  /** True when a retry resolved to the incident that already exists. */
+  duplicate: boolean;
+}
+
+/** Live SSE frame the backend emits for a wearable SOS. */
+export interface HardwareSosEvent {
+  source: 'hardware';
+  type: 'hardware_sos';
+  payload: Incident;
+}

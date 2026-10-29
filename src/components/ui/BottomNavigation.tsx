@@ -37,7 +37,7 @@ export function BottomNavigation<T extends string>({
       <nav
         id={id}
         aria-label="Bottom Navigation"
-        className="glass pointer-events-auto mx-auto max-w-[var(--app-max)] rounded-dock p-1"
+        className="glass-dock pointer-events-auto mx-auto max-w-[var(--app-max)] rounded-dock p-1"
       >
         <ul className="grid grid-cols-4">
           {items.map((item) => {

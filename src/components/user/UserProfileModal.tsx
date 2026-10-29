@@ -16,26 +16,38 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   telemetry,
 }) => {
   const [profile, setProfile] = useState<CitizenProfile>(loadCitizenProfile);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isOpen) setProfile(loadCitizenProfile());
+    if (isOpen) {
+      setProfile(loadCitizenProfile());
+      setSaveError(null);
+    }
   }, [isOpen]);
 
   const updateProfile = (patch: Partial<CitizenProfile>) => {
-    setProfile((prev) => {
-      const next = { ...prev, ...patch };
-      saveCitizenProfile(next);
-      return next;
-    });
+    const next = { ...profile, ...patch };
+    setProfile(next);
+    const ok = saveCitizenProfile(next);
+    if (!ok && patch.avatar !== undefined) {
+      setSaveError('Could not save the photo on this device — storage is full.');
+    } else {
+      setSaveError(null);
+    }
   };
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const dataUrl = await readAvatarFile(file);
-    updateProfile({ avatar: dataUrl });
-    e.target.value = '';
+    try {
+      const dataUrl = await readAvatarFile(file);
+      updateProfile({ avatar: dataUrl });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Could not load this image.');
+    } finally {
+      e.target.value = '';
+    }
   };
 
   return (
@@ -50,11 +62,14 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           type="button"
           onClick={() => avatarInputRef.current?.click()}
           aria-label="Change profile picture"
-          className="press group relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-brand-600 text-[13px] font-extrabold text-white"
+          style={
+            profile.avatar
+              ? { backgroundImage: `url("${profile.avatar}")` }
+              : undefined
+          }
+          className="press group relative grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-full bg-brand-600 bg-cover bg-center text-[13px] font-extrabold text-white"
         >
-          {profile.avatar ? (
-            <img src={profile.avatar} alt="" className="h-full w-full object-cover" />
-          ) : (
+          {profile.avatar ? null : (
             <span>{(profile.fullName || 'BA').charAt(0).toUpperCase()}</span>
           )}
           <span className="absolute inset-0 grid place-items-center bg-black/45 opacity-0 transition-opacity duration-[160ms] group-hover:opacity-100">
@@ -76,6 +91,15 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       }
     >
       <div className="space-y-5">
+        {saveError && (
+          <p
+            role="alert"
+            className="rounded-field border border-danger/25 bg-danger-soft px-3.5 py-2.5 text-[12px] font-bold text-danger"
+          >
+            {saveError}
+          </p>
+        )}
+
         {/* Identity safeguard notice */}
         <div className="flex items-start gap-2.5 rounded-card border border-success/25 bg-success-soft p-3.5">
           <ShieldCheck size={17} strokeWidth={1.9} className="mt-0.5 shrink-0 text-success" />
@@ -115,13 +139,21 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               value={profile.dateOfBirth}
               onChange={(e) => updateProfile({ dateOfBirth: e.target.value })}
             />
+            <TextField
+              label="Verified address"
+              type="text"
+              value={profile.address}
+              onChange={(e) => updateProfile({ address: e.target.value })}
+              placeholder="e.g. 949 National Road, St. Francis II, Limay, Bataan"
+              hint="Shown to responders. Your live position always comes from your device GPS."
+            />
             <div>
               <span className="t-caption mb-1.5 block text-muted">Age</span>
               <input
                 type="text"
                 value={computeAge(profile.dateOfBirth) ?? '—'}
                 readOnly
-                className="w-full min-h-[44px] rounded-field border-[1.5px] border-[rgba(15,31,58,.06)] bg-[var(--surface-sunken)] px-3.5 py-2.5 text-[13px] font-bold text-muted"
+                className="w-full min-h-[44px] rounded-field border-[1.5px] border-[rgba(11,27,51,.06)] bg-[var(--surface-sunken)] px-3.5 py-2.5 text-[13px] font-bold text-muted"
               />
             </div>
           </div>

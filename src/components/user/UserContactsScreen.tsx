@@ -221,7 +221,7 @@ export const UserContactsScreen: React.FC<UserContactsScreenProps> = ({
                 </div>
 
                 {/* Actions */}
-                <div className="mt-3 flex items-center gap-2 border-t border-[rgba(15,31,58,.06)] pt-3 dark:border-white/[.08]">
+                <div className="mt-3 flex items-center gap-2 border-t border-[rgba(11,27,51,.06)] pt-3 dark:border-white/[.08]">
                   <LinkButton
                     href={`tel:${contact.phone}`}
                     variant="secondary"
@@ -341,7 +341,7 @@ export const UserContactsScreen: React.FC<UserContactsScreenProps> = ({
             onClick={() => setFormData({ ...formData, isActive: !formData.isActive })}
             role="switch"
             aria-checked={formData.isActive}
-            className="press flex w-full items-center justify-between gap-3 rounded-field border-[1.5px] border-[rgba(15,31,58,.14)] px-3.5 py-3 text-left transition-colors duration-[160ms] dark:border-white/[.14]"
+            className="press flex w-full items-center justify-between gap-3 rounded-field border-[1.5px] border-[rgba(11,27,51,.14)] px-3.5 py-3 text-left transition-colors duration-[160ms] dark:border-white/[.14]"
           >
             <span className="min-w-0">
               <span className="block text-[13px] font-extrabold text-ink">
@@ -354,7 +354,7 @@ export const UserContactsScreen: React.FC<UserContactsScreenProps> = ({
             <span
               className={
                 'track relative h-6 w-11 shrink-0 rounded-full ' +
-                (formData.isActive ? 'bg-success' : 'bg-[rgba(15,31,58,.2)] dark:bg-white/20')
+                (formData.isActive ? 'bg-success' : 'bg-[rgba(11,27,51,.2)] dark:bg-white/20')
               }
             >
               <span

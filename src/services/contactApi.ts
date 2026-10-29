@@ -5,8 +5,10 @@
 
 import { EmergencyContactItem } from '../types';
 
-// Same Bridge backend as bridgeClient — overridable via VITE_BRIDGE_URL.
-const API_URL = (import.meta as any)?.env?.VITE_BRIDGE_URL || 'http://localhost:8000';
+// Same Bridge backend as bridgeClient — defaults to the same host as the page.
+const API_URL =
+  import.meta.env.VITE_BRIDGE_URL ||
+  `${window.location.protocol}//${window.location.hostname}:8000`;
 
 export async function fetchContacts(): Promise<EmergencyContactItem[]> {
   const r = await fetch(`${API_URL}/contacts`);

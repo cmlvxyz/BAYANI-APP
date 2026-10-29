@@ -64,25 +64,98 @@ async function ipFallback(): Promise<ResolvedLocation> {
   };
 }
 
-async function reverseGeocode(
+/**
+ * Normalise a place/road name for display.
+ *
+ * OpenStreetMap carries a few Philippine quirks that read badly in the app:
+ *   - "Saint Francis Ⅱ" uses the Unicode Roman numeral; we want "St. Francis II"
+ *   - the Bataan national highway is tagged "Old National Road"; locally it is
+ *     simply "National Road", and responders search for it under that name
+ * Narrow, explicit list so we never mangle unrelated names.
+ */
+function normalizePlaceName(raw: string): string {
+  let name = String(raw || '').trim();
+  if (!name) return '';
+
+  // Unicode Roman numerals -> ASCII, so "Francis Ⅱ" becomes "Francis II".
+  const roman: Record<string, string> = {
+    'Ⅰ': 'I', 'Ⅱ': 'II', 'Ⅲ': 'III', 'Ⅳ': 'IV',
+    'Ⅴ': 'V', 'Ⅵ': 'VI', 'Ⅶ': 'VII', 'Ⅷ': 'VIII', 'Ⅸ': 'IX', 'Ⅹ': 'X',
+  };
+  name = name.replace(/[ⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ]/g, (ch) => roman[ch] || ch);
+
+  // "Saint Francis II" -> "St. Francis II" (Philippine postal convention).
+  name = name.replace(/\bSaint\b/g, 'St.');
+
+  // "Old National Road" -> "National Road" (PH national highway naming).
+  name = name.replace(/^Old\s+(National\s+Road)$/i, '$1');
+
+  return name.replace(/\s+/g, ' ').trim();
+}
+
+interface NominatimAddress {
+  road?: string;
+  residential?: string;
+  pedestrian?: string;
+  quarter?: string;
+  suburb?: string;
+  village?: string;
+  city?: string;
+  town?: string;
+  municipality?: string;
+  county?: string;
+  state?: string;
+  country?: string;
+}
+
+/**
+ * Build a clean Philippine address from Nominatim's structured address parts.
+ *
+ * The previous implementation took `display_name`, split it on commas and kept
+ * the first five chunks. That produced artefacts such as
+ * "Old National Road, Saay, Saint, Francis II, Limay, Bataan" because Nominatim
+ * repeats the barangay name and injects a zone ("Saay") that is not part of a
+ * postal address. Ordering the parts explicitly gives
+ * "National Road, St. Francis II, Limay, Bataan".
+ */
+function formatAddressFromParts(a: NominatimAddress): {
+  label: string;
+  city: string;
+  region: string;
+} {
+  const city = normalizePlaceName(a.city || a.town || a.municipality || a.county || '');
+  const region = normalizePlaceName(a.state || '');
+  const barangay = normalizePlaceName(
+    a.quarter || a.village || a.suburb || '',
+  );
+  const street = normalizePlaceName(a.road || a.residential || a.pedestrian || '');
+
+  const parts = [street, barangay, city, region].filter(Boolean);
+
+  return {
+    // Drop a trailing barangay that just repeats the city name.
+    label: [...new Set(parts)].filter(Boolean).join(', '),
+    city,
+    region,
+  };
+}
+
+export async function reverseGeocode(
   lat: number,
   lng: number,
 ): Promise<Pick<ResolvedLocation, 'city' | 'region' | 'country' | 'label'>> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 9000);
   try {
-    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=16&addressdetails=1`;
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
     const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: 'application/json' } });
     if (!res.ok) {
       return {};
     }
     const data = await res.json();
-    const a = data.address || {};
-    const city = a.city || a.town || a.municipality || a.village || a.county || '';
-    const region = a.state || a.province || a.region || '';
-    const label = data.display_name
-      ? String(data.display_name).split(',').slice(0, 5).join(',').trim()
-      : [city, region].filter(Boolean).join(', ');
+    const a = (data.address || {}) as NominatimAddress;
+    const { label, city, region } = formatAddressFromParts(a);
+    if (!label) return {};
     return { city, region, country: a.country || 'Philippines', label };
   } catch {
     return {};
@@ -203,4 +276,25 @@ export function watchGeolocation(
   );
 
   return () => navigator.geolocation.clearWatch(watchId);
+}
+
+const EARTH_RADIUS_METERS = 6371008.8;
+
+/**
+ * Great-circle (haversine) distance in meters between two GPS fixes.
+ * Shared by the live-location watcher to decide when a movement is large
+ * enough to warrant a Street View / sharing refresh.
+ */
+export function haversineMeters(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h =
+    Math.sin(dLat / 2) ** 2 + Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+  return 2 * EARTH_RADIUS_METERS * Math.asin(Math.min(1, Math.sqrt(h)));
 }

@@ -8,7 +8,7 @@ import { fetchContacts, createContactRemote, updateContactRemote, deleteContactR
 import { loadCitizenProfile } from './profileService';
 import { getSession } from './authClient';
 import { createEmergencyAudioDataUrl } from './audioService';
-import { emitSOS } from './bridgeClient';
+import { emitSOS, emitLocationUpdate } from './bridgeClient';
 import { enqueuePendingSos, removePendingSos, bumpPendingSos, listPendingSos } from './sosQueue';
 
 const INITIAL_INCIDENT: Incident | null = null;
@@ -259,7 +259,7 @@ class IncidentService {
         { id: 't6', title: 'Trusted Contacts Notified', description: 'Your trusted contacts are informed by SMS', status: 'pending', timestamp: currentTime },
         { id: 't7', title: 'Responder En Route', description: 'A responder is being dispatched to your location', status: 'pending', timestamp: currentTime },
       ],
-      notes: 'SOS raised from the Bayani app.',
+      notes: 'SOS raised from the SINAG app.',
     };
 
     this.activeIncident = newIncident;
@@ -340,7 +340,7 @@ class IncidentService {
     }
     if (ok) {
       await removePendingSos(incidentId);
-      this.setTimelineStep(incidentId, 't5', { status: 'completed', description: 'Received by the Bayani Response Center' });
+      this.setTimelineStep(incidentId, 't5', { status: 'completed', description: 'Received by the SINAG Response Center' });
       this.patchSos(incidentId, { sending: { state: 'SERVER_RECEIVED' }, communicationStatus: 'CONFIRMED' });
       return true;
     }
@@ -388,6 +388,122 @@ class IncidentService {
   /** Exact-location source is preserved for the street view rather than faked. */
   public getIncidentSource(): IncidentSource | undefined {
     return this.activeIncident?.source;
+  }
+
+  /**
+   * Ingest a SOS raised by this citizen's registered wearable device (backend
+   * SSE frame `hardware_sos`). The backend already built, stored and dispatched
+   * the incident, so this method ONLY surfaces it as the active emergency —
+   * it never calls `transmitSos()`, `emitSOS()`, or writes the offline queue,
+   * so an alert can never be sent twice or re-raised on reconnect.
+   */
+  public receiveHardwareIncident(inc: Incident) {
+    if (!inc || !inc.id) return;
+
+    const alreadyKnown = this.incidents.some((i) => i.id === inc.id);
+    const isActive = this.activeIncident?.id === inc.id;
+    const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const deviceLabel = inc.device?.label || inc.device?.deviceId || 'your wearable device';
+
+    const incoming: Incident = {
+      ...inc,
+      source: 'HARDWARE',
+      location: { ...EMPTY_LOCATION, ...(inc.location ?? {}) },
+      // The backend confirmed receipt when it stored the incident — this is a
+      // real, honest transmission state, not a local "created" placeholder.
+      sending: inc.sending ?? { state: 'SERVER_RECEIVED', attempts: 0 },
+      timeline: [
+        {
+          id: 'th1',
+          title: 'SOS Received from Wearable',
+          description: `Your ${deviceLabel} sent an emergency signal`,
+          status: 'completed',
+          timestamp: currentTime,
+        },
+        ...(inc.timeline ?? []),
+      ],
+    };
+
+    if (!alreadyKnown) {
+      this.incidents = [incoming, ...this.incidents.filter((i) => i.id !== inc.id)];
+    }
+
+    // An alert that is already open is not replaced — one citizen, one active
+    // emergency — but the wearable signal is still surfaced as a notification.
+    const open = this.activeIncident && this.activeIncident.status !== 'RESOLVED' && this.activeIncident.status !== 'CANCELLED';
+    if (!open) {
+      this.activeIncident = incoming;
+      writeActiveSosId(incoming.id);
+    }
+
+    if (!isActive) {
+      this.notifications = [
+        {
+          id: `notif-hw-${incoming.id}`,
+          type: 'sos',
+          title: '🚨 SOS from your wearable',
+          message: open
+            ? `${deviceLabel} sent an SOS while an alert was already open (${incoming.incidentCode}).`
+            : `Your ${deviceLabel} sent an SOS (${incoming.incidentCode}). Help is on the way.`,
+          timestamp: currentTime,
+          isRead: false,
+          isEmergency: true,
+        },
+        ...this.notifications,
+      ];
+    }
+
+    this.notify();
+  }
+
+  /**
+   * Attach (or refresh) the citizen's real device position on the active
+   * emergency. The SOS always fires immediately with whatever is known; when
+   * the watcher then delivers an actual fix, this is what upgrades the incident
+   * from SEARCHING to a real, responder-usable position. Coordinates always come
+   * from `navigator.geolocation` - never from a hardcoded fallback.
+   */
+  public updateActiveEmergencyLocation(update: {
+    lat: number;
+    lng: number;
+    address?: string;
+    barangay?: string;
+    city?: string;
+    accuracy?: number;
+    gpsTimestamp?: string;
+    source?: 'gps' | 'ip' | 'override';
+  }): boolean {
+    const inc = this.activeIncident;
+    if (!inc || inc.status === 'RESOLVED' || inc.status === 'CANCELLED') return false;
+
+    // Skip no-op refreshes (same coords) so the backend/RC isn't hammered when
+    // only the reverse-geocoded label changed.
+    const movedMeaningfully =
+      Math.abs((inc.location.lat ?? 0) - update.lat) > 1e-5 ||
+      Math.abs((inc.location.lng ?? 0) - update.lng) > 1e-5;
+
+    this.patchSos(inc.id, {
+      location: {
+        ...inc.location,
+        lat: update.lat,
+        lng: update.lng,
+        address: update.address || inc.location.address,
+        barangay: update.barangay || inc.location.barangay,
+        city: update.city || inc.location.city,
+        accuracyRadiusMeters: Math.max(0, update.accuracy ?? inc.location.accuracyRadiusMeters ?? 0),
+        gpsTimestamp: update.gpsTimestamp ?? inc.location.gpsTimestamp,
+        source: update.source ?? inc.location.source,
+      },
+      gpsStatus: 'LIVE',
+    });
+
+    // The SOS may have gone out before the GPS had a fix. Push the real position
+    // so the Response Center can finally plot the citizen on the map. Harmless
+    // if the incident isn't stored yet (backend merge is a no-op until it is).
+    if (movedMeaningfully && this.activeIncident) {
+      emitLocationUpdate(this.activeIncident);
+    }
+    return true;
   }
 
   /** Latest live-audio clip for the active emergency (null when none). */
@@ -470,7 +586,7 @@ class IncidentService {
           sending: inc.sending ? { ...inc.sending, state: 'SERVER_RECEIVED' } : undefined,
           timeline: (inc.timeline ?? []).map((s) => {
             if (s.id === 't5' && s.status !== 'completed') {
-              return { ...s, status: 'completed' as const, description: 'Received by the Bayani Response Center' };
+              return { ...s, status: 'completed' as const, description: 'Received by the SINAG Response Center' };
             }
             if (s.id === 't7') {
               return resolved
